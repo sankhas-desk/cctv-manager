@@ -75,9 +75,10 @@
   }
   button:hover{background:#2a2a2a;border-color:#2a2a2a}
   button:active{transform:scale(.98)}
-  button.primary{background:var(--red);border-color:var(--red)}          /* brand red actions */
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.primary{background:var(--red);border-color:var(--red)}
   button.primary:hover{background:var(--red-dark);border-color:var(--red-dark)}
-  button.green{background:var(--green);border-color:var(--green)}        /* done / save */
+  button.green{background:var(--green);border-color:var(--green)}
   button.green:hover{background:var(--green-dark);border-color:var(--green-dark)}
   button.grey{background:transparent;color:var(--ink);border-color:var(--line)}
   button.grey:hover{background:#f0f0f1;border-color:#d5d5d8}
@@ -102,7 +103,17 @@
   .row>*{flex:0 0 auto}
   .hidden{display:none!important}
   .meta{font-size:13px;color:var(--muted);margin-top:6px}
+  .meta a{color:var(--ink);font-weight:500}
   .err{color:var(--red);font-size:13.5px;margin:6px 0 0}
+
+  /* ---------- Add-job rows ---------- */
+  .jobrow{display:grid;grid-template-columns:1fr 180px 42px;gap:8px;margin-bottom:8px}
+  .jobrow input{margin:0}
+  .jobrow button{padding:0;width:42px}
+  @media (max-width:520px){
+    .jobrow{grid-template-columns:1fr 42px}
+    .jobrow .jp{grid-column:1;grid-row:2}
+  }
 
   /* ---------- Date bar ---------- */
   .datebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -143,12 +154,15 @@
   .task.done::before{background:var(--green)}
   .task.done{background:#fcfefd}
   .task b{font-size:16px;font-weight:600}
+  .badges{display:flex;gap:6px;flex-wrap:wrap}
   .badge{
     font-size:11.5px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;
-    padding:3px 10px;border-radius:20px;
+    padding:3px 10px;border-radius:20px;white-space:nowrap;
   }
   .badge.pending{background:var(--orange-soft);color:var(--orange-text)}
   .badge.done{background:var(--green);color:#fff}
+  .badge.inv{background:var(--black);color:#fff}
+  .badge.noinv{background:var(--red-soft);color:var(--red)}
   .task .row:last-child{margin-top:12px}
 
   /* ---------- Modal ---------- */
@@ -234,9 +248,11 @@
       <div class="card">
         <details open>
           <summary>Add jobs</summary>
-          <label>One job per line</label>
-          <textarea id="newTasks" rows="4" placeholder="School CCTV service&#10;Kamal's home CCTV service&#10;Shop DVR troubleshooting"></textarea>
-          <button id="addTasksBtn" class="primary">Post jobs to selected date</button>
+          <div id="jobRows"></div>
+          <div class="row" style="margin-top:6px">
+            <button class="grey" id="addRowBtn" type="button">+ Add another job</button>
+            <button id="addTasksBtn" class="primary">Post jobs to selected date</button>
+          </div>
         </details>
       </div>
       <div class="card">
@@ -277,22 +293,38 @@
 <div id="modal" class="modal hidden">
   <div class="box">
     <h3 id="mTitle"></h3>
+
+    <!-- admin: edit job details -->
     <div id="adminFields" class="hidden">
       <label>Job title</label><input id="mJob">
+      <label>Phone number</label><input id="mPhone" type="tel" inputmode="tel">
       <label>Notes / location (optional)</label><textarea id="mNotes" rows="2"></textarea>
     </div>
-    <label><b>What was done?</b></label>
-    <textarea id="mWork" rows="4" placeholder="Describe the work you did..."></textarea>
-    <label><b>Who attended?</b></label>
-    <div id="mChecks" class="checks"></div>
+
+    <!-- worker report fields -->
+    <div id="workFields">
+      <label><b>What was done?</b></label>
+      <textarea id="mWork" rows="4" placeholder="Describe the work you did..."></textarea>
+      <label><b>Who attended?</b></label>
+      <div id="mChecks" class="checks"></div>
+    </div>
+
+    <!-- admin: invoice -->
+    <div id="invoiceFields" class="hidden">
+      <label><b>Invoice number</b></label>
+      <input id="mInvNo" placeholder="e.g. INV-1042">
+    </div>
+
     <div id="adminStatus" class="hidden">
       <label>Status</label>
       <select id="mStatus"><option value="pending">Pending</option><option value="done">Done</option></select>
     </div>
+
     <p class="err" id="mErr"></p>
     <div class="row" style="margin-top:12px">
       <button class="green" id="mSave">Save</button>
       <button class="grey" id="mCancel">Cancel</button>
+      <button class="red hidden" id="mRemoveInv">Remove invoice mark</button>
     </div>
   </div>
 </div>
@@ -363,8 +395,16 @@ function show(view) {
 }
 
 /* ---------- TASKS ---------- */
-// Pending first, done last. Pending: oldest posted first. Done: earliest completed first.
-const rank = t => t.status === 'done' ? 1 : 0;
+/* Admin order : completed-but-not-invoiced → pending → invoiced
+   Worker order: pending → done                                   */
+const rank = t => {
+  if (isAdmin) {
+    if (t.status === 'done' && !t.invoiced) return 0;
+    if (t.status !== 'done') return 1;
+    return 2;
+  }
+  return t.status === 'done' ? 1 : 0;
+};
 const stamp = t => ((t.status === 'done' ? t.completedAt : t.createdAt)?.seconds) ?? Number.MAX_SAFE_INTEGER;
 
 function listenTasks() {
@@ -397,23 +437,36 @@ function renderProgress() {
 function renderTasks() {
   renderProgress();
   if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs posted for this date.</div>'; return; }
-  $('taskList').innerHTML = tasks.map(t => `
+  $('taskList').innerHTML = tasks.map(t => {
+    const isDone = t.status === 'done';
+    const tel = String(t.phone || '').replace(/[^\d+]/g, '');
+    return `
     <div class="card task ${t.status}">
-      <div class="row" style="justify-content:space-between">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
         <b>${esc(t.title)}</b>
-        <span class="badge ${t.status}">${t.status === 'done' ? '✔ Done' : 'Pending'}</span>
+        <div class="badges">
+          <span class="badge ${t.status}">${isDone ? '✔ Done' : 'Pending'}</span>
+          ${isAdmin && isDone ? (t.invoiced
+              ? '<span class="badge inv">Invoiced</span>'
+              : '<span class="badge noinv">Not invoiced</span>') : ''}
+        </div>
       </div>
+      ${t.phone ? `<div class="meta">Phone: <a href="tel:${esc(tel)}">${esc(t.phone)}</a></div>` : ''}
       ${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
-      ${t.status === 'done' ? `
+      ${isDone ? `
         <div style="margin-top:8px"><b style="font-size:14px">Work done:</b> ${esc(t.workDone).replace(/\n/g,'<br>')}</div>
         <div class="meta">Attended: ${esc((t.attendedBy || []).join(', '))}<br>
         Submitted by ${esc(t.completedByName)} • ${t.completedAt ? t.completedAt.toDate().toLocaleString() : ''}</div>` : ''}
+      ${isAdmin && isDone && t.invoiced ? `
+        <div class="meta"><b style="color:var(--ink)">Invoice no:</b> ${esc(t.invoiceNo)}${t.invoicedAt ? ' • ' + t.invoicedAt.toDate().toLocaleString() : ''}</div>` : ''}
       <div class="row">
         ${t.status === 'pending' ? `<button class="green" data-act="done" data-id="${t.id}">Mark done / report</button>` : ''}
+        ${isAdmin && isDone ? `<button class="${t.invoiced ? 'grey' : 'primary'}" data-act="invoice" data-id="${t.id}">${t.invoiced ? 'Edit invoice' : 'Mark invoiced'}</button>` : ''}
         ${isAdmin ? `<button class="grey" data-act="edit" data-id="${t.id}">Edit</button>
                      <button class="red" data-act="del" data-id="${t.id}">Delete</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 $('taskList').onclick = async e => {
@@ -424,51 +477,105 @@ $('taskList').onclick = async e => {
   } else openModal(t, b.dataset.act);
 };
 
-/* ---------- ADMIN: add jobs ---------- */
+/* ---------- ADMIN: add jobs (title + phone per row) ---------- */
+function addRow() {
+  const d = document.createElement('div');
+  d.className = 'jobrow';
+  d.innerHTML = `<input class="jt" placeholder="Job (e.g. School CCTV service)">
+                 <input class="jp" type="tel" inputmode="tel" placeholder="Phone number">
+                 <button type="button" class="grey" title="Remove">✕</button>`;
+  d.querySelector('button').onclick = () => {
+    if ($('jobRows').children.length > 1) d.remove();
+    else d.querySelectorAll('input').forEach(i => i.value = '');
+  };
+  $('jobRows').appendChild(d);
+}
+$('addRowBtn').onclick = addRow;
+addRow();
+
 $('addTasksBtn').onclick = async () => {
-  const lines = $('newTasks').value.split('\n').map(s => s.trim()).filter(Boolean);
-  if (!lines.length) return;
+  const rows = [...document.querySelectorAll('#jobRows .jobrow')].map(r => ({
+    title: r.querySelector('.jt').value.trim(),
+    phone: r.querySelector('.jp').value.trim()
+  })).filter(r => r.title);
+  if (!rows.length) return;
   const date = $('dateSel').value;
   const expire = new Date(date); expire.setDate(expire.getDate() + 400);
-  for (const title of lines) {
-    await addDoc(collection(db, 'tasks'), {
-      date, title, notes: '', status: 'pending', workDone: '', attendedBy: [],
-      createdAt: serverTimestamp(), createdBy: me.uid,
-      expireAt: Timestamp.fromDate(expire)   // only used if you enable optional TTL
-    });
-  }
-  $('newTasks').value = '';
+  $('addTasksBtn').disabled = true;
+  try {
+    for (const r of rows) {
+      await addDoc(collection(db, 'tasks'), {
+        date, title: r.title, phone: r.phone, notes: '',
+        status: 'pending', workDone: '', attendedBy: [],
+        invoiced: false, invoiceNo: '',
+        createdAt: serverTimestamp(), createdBy: me.uid,
+        expireAt: Timestamp.fromDate(expire)   // only used if you enable optional TTL
+      });
+    }
+    $('jobRows').innerHTML = ''; addRow();
+  } catch (e) { alert('Could not post jobs: ' + e.message); }
+  $('addTasksBtn').disabled = false;
 };
 
 /* ---------- MODAL ---------- */
 function openModal(t, mode) {
   editingId = t.id;
+  const edit = mode === 'edit', inv = mode === 'invoice';
+  $('modal').dataset.mode = mode;
   $('mErr').textContent = '';
-  $('mTitle').textContent = mode === 'edit' ? 'Edit job' : t.title;
-  $('adminFields').classList.toggle('hidden', mode !== 'edit');
-  $('adminStatus').classList.toggle('hidden', mode !== 'edit');
-  $('mJob').value = t.title; $('mNotes').value = t.notes || '';
+  $('mTitle').textContent = inv ? 'Invoice – ' + t.title : (edit ? 'Edit job' : t.title);
+  $('adminFields').classList.toggle('hidden', !edit);
+  $('adminStatus').classList.toggle('hidden', !edit);
+  $('workFields').classList.toggle('hidden', inv);
+  $('invoiceFields').classList.toggle('hidden', !inv);
+  $('mRemoveInv').classList.toggle('hidden', !(inv && t.invoiced));
+  $('mJob').value = t.title; $('mPhone').value = t.phone || ''; $('mNotes').value = t.notes || '';
   $('mWork').value = t.workDone || ''; $('mStatus').value = t.status;
+  $('mInvNo').value = t.invoiceNo || '';
   const attended = t.attendedBy || [];
   $('mChecks').innerHTML = staff.filter(s => s.active).map(s =>
     `<label><input type="checkbox" value="${esc(s.name)}" ${attended.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>`).join('');
   $('modal').classList.remove('hidden');
-  $('modal').dataset.mode = mode;
+  if (inv) setTimeout(() => $('mInvNo').focus(), 50);
 }
 $('mCancel').onclick = () => $('modal').classList.add('hidden');
 
+$('mRemoveInv').onclick = async () => {
+  if (!confirm('Remove the invoice mark from this job?')) return;
+  try {
+    await updateDoc(doc(db, 'tasks', editingId), { invoiced: false, invoiceNo: '', invoicedAt: null, invoicedBy: null });
+    $('modal').classList.add('hidden');
+  } catch (e) { $('mErr').textContent = 'Failed: ' + e.message; }
+};
+
 $('mSave').onclick = async () => {
   const mode = $('modal').dataset.mode;
-  const work = $('mWork').value.trim();
-  const attended = [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value);
   try {
-    if (mode === 'edit') {
+    if (mode === 'invoice') {
+      const no = $('mInvNo').value.trim();
+      if (!no) return $('mErr').textContent = 'Enter the invoice number.';
+      await updateDoc(doc(db, 'tasks', editingId), {
+        invoiced: true, invoiceNo: no, invoicedAt: serverTimestamp(), invoicedBy: me.uid
+      });
+    } else if (mode === 'edit') {
+      const t = tasks.find(x => x.id === editingId);
+      const title = $('mJob').value.trim();
+      if (!title) return $('mErr').textContent = 'Job title cannot be empty.';
       const status = $('mStatus').value;
-      const data = { title: $('mJob').value.trim(), notes: $('mNotes').value.trim(),
-                     workDone: work, attendedBy: attended, status };
-      if (status === 'done') { data.completedAt = serverTimestamp(); data.completedBy = me.uid; data.completedByName = me.name; }
+      const data = {
+        title, phone: $('mPhone').value.trim(), notes: $('mNotes').value.trim(),
+        workDone: $('mWork').value.trim(),
+        attendedBy: [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value),
+        status
+      };
+      if (status === 'done' && t.status !== 'done') {
+        data.completedAt = serverTimestamp(); data.completedBy = me.uid; data.completedByName = me.name;
+      }
+      if (status === 'pending') { data.invoiced = false; data.invoiceNo = ''; data.invoicedAt = null; }
       await updateDoc(doc(db, 'tasks', editingId), data);
     } else {
+      const work = $('mWork').value.trim();
+      const attended = [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value);
       if (!work) return $('mErr').textContent = 'Please describe what was done.';
       if (!attended.length) return $('mErr').textContent = 'Select who attended.';
       await updateDoc(doc(db, 'tasks', editingId), {
@@ -516,9 +623,10 @@ $('exportBtn').onclick = async () => {
   const s = await getDocs(query(collection(db, 'tasks'), where('date', '>=', from), where('date', '<=', to)));
   const rows = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = ['Date,Job,Notes,Status,Work Done,Attended By,Submitted By,Completed At']
-    .concat(rows.map(r => [r.date, r.title, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
-      r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : ''].map(q).join(','))).join('\n');
+  const csv = ['Date,Job,Phone,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
+    .concat(rows.map(r => [r.date, r.title, r.phone, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
+      r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : '',
+      r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(','))).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `cctv-records_${from}_to_${to}.csv`; a.click();
