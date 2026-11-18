@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Service Manager | Version 1.9 -->
+<!-- Service Manager | Version 2.0 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -194,6 +194,7 @@
 
   /* ---------- Vehicle mileage ---------- */
   .milerow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .milerow input:disabled{background:#eef0f2;color:#8a8f96;-webkit-text-fill-color:#8a8f96;opacity:1;cursor:not-allowed}
   .km-total{
     display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
     background:var(--green-soft);border:1px solid #c9ead7;border-radius:12px;padding:12px 14px;margin:6px 0 12px;
@@ -314,22 +315,19 @@
         <summary>Vehicle mileage</summary>
         <div class="meta" id="kmDateLbl" style="margin:0 0 8px"></div>
         <div class="milerow">
-          <div><label for="kmStart"><b>Start km</b> (odometer)</label>
+          <div><label for="kmStart"><b>Start km</b> (morning)</label>
             <input id="kmStart" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 45210"></div>
-          <div><label for="kmEnd"><b>End km</b> (odometer)</label>
+          <div><label for="kmEnd"><b>End km</b> (evening)</label>
             <input id="kmEnd" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 45286"></div>
         </div>
-        <div class="row">
-          <button class="green" id="kmSaveBtn">Save mileage</button>
-          <span class="meta" id="kmDay" style="margin:0"></span>
-        </div>
+        <div class="row"><button class="green" id="kmSaveBtn">Save start km</button></div>
+        <div class="meta" id="kmDay" style="margin:8px 0 0"></div>
         <p class="err" id="kmMsg"></p>
 
         <div class="km-total">
           <span id="kmMonthLbl">This month</span>
           <b id="kmMonthTotal">0 km</b>
         </div>
-        <div id="kmByWorker"></div>
         <div id="kmList"></div>
       </details>
     </div>
@@ -414,7 +412,7 @@ const firebaseConfig = {
   };
 /* ============================================= */
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 document.querySelectorAll('.appVer').forEach(e => e.textContent = APP_VERSION);
 
 const app  = initializeApp(firebaseConfig);
@@ -608,93 +606,117 @@ $('addTasksBtn').onclick = async () => {
 };
 
 /* ---------- VEHICLE MILEAGE ----------
-   One document per worker per day:  mileage/{uid}_{YYYY-MM-DD}
-   Workers see their own km; the admin sees every worker + the combined total. */
+   One shared record per day for the company vehicle:  dailyMileage/{YYYY-MM-DD}
+   Morning: any worker saves the START km, which is then locked (greyed out) for everyone.
+   Evening: any worker saves the END km, which completes the day.
+   Workers can only write for TODAY. The admin can pick any date and correct readings. */
 const fmtKm = n => (Math.round((Number(n) || 0) * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
 const monthLabel = m => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); };
+const mileDate = () => isAdmin ? ($('dateSel').value || todayStr()) : todayStr();
+let kmFormKey = null;
 
 function listenMileage() {
   if (!me) return;
-  const month = ($('dateSel').value || todayStr()).slice(0, 7);
+  const month = mileDate().slice(0, 7);
   if (month === mileMonth && unsubMile) { renderMileage(); return; }   // same month: nothing to re-fetch
   if (unsubMile) unsubMile();
   mileMonth = month; mileage = [];
-  const q = isAdmin
-    ? query(collection(db, 'mileage'), where('month', '==', month))
-    : query(collection(db, 'mileage'), where('uid', '==', me.uid), where('month', '==', month));
-  unsubMile = onSnapshot(q, s => {
-    mileage = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
+  unsubMile = onSnapshot(query(collection(db, 'dailyMileage'), where('month', '==', month)), s => {
+    mileage = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
     renderMileage();
   }, e => { $('kmMsg').style.color = ''; $('kmMsg').textContent = 'Could not load mileage: ' + e.message; });
   renderMileage();
 }
 
+// lock a box (grey, no editing) when its reading is saved; otherwise leave what the person is typing alone
+function setKmField(el, value, locked, keyChanged) {
+  el.disabled = locked;
+  if (locked || keyChanged) el.value = value ?? '';
+  else if (value != null && el.value === '' && document.activeElement !== el) el.value = value;
+}
+
 function renderMileage() {
   if (!me) return;
-  const date = $('dateSel').value, month = date.slice(0, 7);
-  $('kmDateLbl').textContent = 'Enter the odometer reading for ' + date;
+  const date = mileDate(), month = date.slice(0, 7);
+  const d = mileage.find(m => m.date === date) || null;
+  const keyChanged = kmFormKey !== date; kmFormKey = date;
+  const hasEnd = !!d && d.endKm != null;
 
-  // fill the inputs from the saved entry (unless the person is typing right now)
-  const mine = mileage.find(m => m.uid === me.uid && m.date === date);
-  if (document.activeElement !== $('kmStart') && document.activeElement !== $('kmEnd')) {
-    $('kmStart').value = mine ? mine.startKm : '';
-    $('kmEnd').value = mine && mine.endKm != null ? mine.endKm : '';
-  }
-  $('kmDay').textContent = !mine ? 'No mileage saved for this day.'
-    : (mine.endKm != null ? `Driven today: ${fmtKm(mine.km)} km` : 'Start saved – add the end km when you finish.');
+  $('kmDateLbl').textContent = isAdmin
+    ? `Mileage for ${date} (admin: you can correct readings)`
+    : `Today (${date}). Add the start km in the morning and the end km in the evening.`;
 
-  // running totals (per worker, adding up day by day)
-  const run = {};
-  const rows = mileage.map(m => {
-    run[m.uid] = (run[m.uid] || 0) + (Number(m.km) || 0);
-    return { ...m, running: run[m.uid] };
-  });
-  const total = rows.reduce((a, m) => a + (Number(m.km) || 0), 0);
-  $('kmMonthLbl').textContent = (isAdmin ? 'All workers – ' : 'Your total – ') + monthLabel(month);
-  $('kmMonthTotal').textContent = fmtKm(total) + ' km';
+  setKmField($('kmStart'), d ? d.startKm : null, !(isAdmin || !d), keyChanged);
+  setKmField($('kmEnd'), hasEnd ? d.endKm : null, !(isAdmin || (d && !hasEnd)), keyChanged);
+  $('kmEnd').placeholder = (!d && !isAdmin) ? 'Opens after the start km is saved' : 'e.g. 45286';
 
-  // admin: per-worker totals
-  if (isAdmin && rows.length) {
-    const by = {};
-    rows.forEach(m => { by[m.uid] = by[m.uid] || { name: m.name, km: 0 }; by[m.uid].km += Number(m.km) || 0; });
-    $('kmByWorker').innerHTML = `<div class="km-sub">Per worker</div><div class="km-wrap"><table class="km"><tbody>` +
-      Object.values(by).sort((a, b) => String(a.name).localeCompare(String(b.name)))
-        .map(w => `<tr><td>${esc(w.name)}</td><td class="n"><b>${fmtKm(w.km)} km</b></td></tr>`).join('') +
+  const btn = $('kmSaveBtn');
+  btn.classList.toggle('hidden', !isAdmin && hasEnd);
+  btn.textContent = isAdmin ? 'Save mileage' : (!d ? 'Save start km' : 'Save end km');
+
+  const when = ts => ts && ts.toDate ? ' at ' + ts.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  $('kmDay').textContent = !d ? 'No start reading saved yet for this day.'
+    : `Start ${fmtKm(d.startKm)} km saved by ${d.startByName || '-'}${when(d.startAt)}. ` +
+      (hasEnd ? `End ${fmtKm(d.endKm)} km saved by ${d.endByName || '-'}${when(d.endAt)}. Driven: ${fmtKm(d.km)} km.`
+              : 'Waiting for the end reading.');
+
+  // month total + day-by-day running total (one vehicle, so one record per day)
+  let run = 0;
+  const rows = mileage.map(m => { run += Number(m.km) || 0; return { ...m, running: run }; });
+  $('kmMonthLbl').textContent = 'Vehicle driven in ' + monthLabel(month);
+  $('kmMonthTotal').textContent = fmtKm(run) + ' km';
+
+  $('kmList').innerHTML = !rows.length ? '<div class="meta">No mileage recorded this month.</div>'
+    : `<div class="km-sub">Daily record</div><div class="km-wrap"><table class="km"><thead><tr>
+        <th>Date</th><th class="n">Start</th><th class="n">End</th><th class="n">Km</th><th class="n">Month total</th>
+      </tr></thead><tbody>` +
+      rows.map(m => `<tr><td>${esc(m.date.slice(5))}</td><td class="n">${fmtKm(m.startKm)}</td>
+        <td class="n">${m.endKm != null ? fmtKm(m.endKm) : '—'}</td>
+        <td class="n"><b>${m.endKm != null ? fmtKm(m.km) : '—'}</b></td><td class="n">${fmtKm(m.running)}</td></tr>`).join('') +
       `</tbody></table></div>`;
-  } else $('kmByWorker').innerHTML = '';
-
-  // daily list
-  if (!rows.length) { $('kmList').innerHTML = '<div class="meta">No mileage recorded this month.</div>'; return; }
-  $('kmList').innerHTML = `<div class="km-sub">Daily record</div><div class="km-wrap"><table class="km"><thead><tr>
-      <th>Date</th>${isAdmin ? '<th>Worker</th>' : ''}<th class="n">Start</th><th class="n">End</th><th class="n">Km</th><th class="n">${isAdmin ? 'Worker total' : 'Month total'}</th>
-    </tr></thead><tbody>` +
-    rows.map(m => `<tr><td>${esc(m.date.slice(5))}</td>${isAdmin ? `<td>${esc(m.name)}</td>` : ''}
-      <td class="n">${fmtKm(m.startKm)}</td><td class="n">${m.endKm != null ? fmtKm(m.endKm) : '—'}</td>
-      <td class="n"><b>${m.endKm != null ? fmtKm(m.km) : '—'}</b></td><td class="n">${fmtKm(m.running)}</td></tr>`).join('') +
-    `</tbody></table></div>`;
 }
 
 $('kmSaveBtn').onclick = async () => {
   const msg = $('kmMsg'); msg.style.color = ''; msg.textContent = '';
-  const date = $('dateSel').value;
-  const start = parseFloat($('kmStart').value);
-  const endRaw = $('kmEnd').value.trim();
-  const end = endRaw === '' ? null : parseFloat(endRaw);
-  if (!date) { msg.textContent = 'Choose a date first.'; return; }
-  if (isNaN(start) || start < 0) { msg.textContent = 'Enter the start mileage.'; return; }
-  if (end !== null && (isNaN(end) || end < start)) { msg.textContent = 'End mileage cannot be less than the start mileage.'; return; }
-  $('kmSaveBtn').disabled = true;
+  const date = mileDate(), month = date.slice(0, 7);
+  const d = mileage.find(m => m.date === date) || null;
+  const num = el => { const v = el.value.trim(); return v === '' ? null : parseFloat(v); };
+  const start = num($('kmStart')), end = num($('kmEnd'));
+  const bad = v => v === null || isNaN(v) || v < 0;
+  const btn = $('kmSaveBtn'); btn.disabled = true;
+  let ok = '';
   try {
-    await setDoc(doc(db, 'mileage', `${me.uid}_${date}`), {
-      uid: me.uid, name: me.name, date, month: date.slice(0, 7),
-      startKm: start, endKm: end, km: end === null ? 0 : Math.round((end - start) * 10) / 10,
-      updatedAt: serverTimestamp()
-    });
-    msg.style.color = '#1e9e57'; msg.textContent = 'Mileage saved.';
-    document.activeElement.blur();
-    renderMileage();
-  } catch (e) { msg.textContent = 'Could not save: ' + e.message; }
-  $('kmSaveBtn').disabled = false;
+    if (isAdmin) {
+      if (bad(start)) return msg.textContent = 'Enter the start km.';
+      if (end !== null && (isNaN(end) || end < start)) return msg.textContent = 'End km cannot be less than the start km.';
+      const data = { date, month, startKm: start, endKm: end, km: end === null ? 0 : Math.round((end - start) * 10) / 10 };
+      if (!d || !d.startByName) { data.startByUid = me.uid; data.startByName = me.name; data.startAt = serverTimestamp(); }
+      if (end !== null && (!d || !d.endByName)) { data.endByUid = me.uid; data.endByName = me.name; data.endAt = serverTimestamp(); }
+      await setDoc(doc(db, 'dailyMileage', date), data, { merge: true });
+      ok = 'Mileage saved.';
+    } else if (!d) {
+      // morning: start reading only
+      if (bad(start)) return msg.textContent = 'Enter the start km.';
+      await setDoc(doc(db, 'dailyMileage', date), {
+        date, month, startKm: start, startByUid: me.uid, startByName: me.name, startAt: serverTimestamp(), endKm: null, km: 0
+      });
+      ok = 'Start km saved. The end km can be added this evening.';
+    } else if (d.endKm == null) {
+      // evening: end reading only
+      if (bad(end)) return msg.textContent = 'Enter the end km.';
+      if (end < d.startKm) return msg.textContent = `End km cannot be less than the start km (${fmtKm(d.startKm)}).`;
+      await updateDoc(doc(db, 'dailyMileage', date), {
+        endKm: end, endByUid: me.uid, endByName: me.name, endAt: serverTimestamp(), km: Math.round((end - d.startKm) * 10) / 10
+      });
+      ok = 'End km saved. Thank you!';
+    } else return msg.textContent = "Today's mileage is already complete.";
+    msg.style.color = '#1e9e57'; msg.textContent = ok;
+    listenMileage();
+  } catch (e) {
+    msg.textContent = e.code === 'permission-denied'
+      ? "Could not save. Someone may have saved it already, or this is not today's date."
+      : 'Could not save: ' + e.message;
+  } finally { btn.disabled = false; }
 };
 
 /* ---------- MODAL ---------- */
@@ -841,15 +863,15 @@ $('exportBtn').onclick = async () => {
       r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : '',
       r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(',')));
 
-  // vehicle mileage section (same period)
-  const ms = await getDocs(query(collection(db, 'mileage'), where('date', '>=', from), where('date', '<=', to)));
-  const km = ms.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
-  lines.push('', 'VEHICLE MILEAGE', 'Date,Worker,Start km,End km,Km driven');
-  km.forEach(m => lines.push([m.date, m.name, m.startKm, m.endKm ?? '', m.km].map(q).join(',')));
-  const perWorker = {}; let grand = 0;
-  km.forEach(m => { perWorker[m.name] = (perWorker[m.name] || 0) + (Number(m.km) || 0); grand += Number(m.km) || 0; });
-  Object.keys(perWorker).sort().forEach(n => lines.push(['Total', n, '', '', Math.round(perWorker[n] * 10) / 10].map(q).join(',')));
-  lines.push(['Total (all workers)', '', '', '', Math.round(grand * 10) / 10].map(q).join(','));
+  // vehicle mileage section (same period): one shared record per day
+  const ms = await getDocs(query(collection(db, 'dailyMileage'), where('date', '>=', from), where('date', '<=', to)));
+  const km = ms.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
+  lines.push('', 'VEHICLE MILEAGE', 'Date,Start km,End km,Km driven,Start entered by,End entered by');
+  km.forEach(m => lines.push([m.date, m.startKm, m.endKm ?? '', m.endKm != null ? m.km : '', m.startByName, m.endByName].map(q).join(',')));
+  const perMonth = {}; let grand = 0;
+  km.forEach(m => { perMonth[m.month] = (perMonth[m.month] || 0) + (Number(m.km) || 0); grand += Number(m.km) || 0; });
+  Object.keys(perMonth).sort().forEach(mo => lines.push(['Month total', mo, '', Math.round(perMonth[mo] * 10) / 10].map(q).join(',')));
+  if (Object.keys(perMonth).length > 1) lines.push(['Total (whole period)', '', '', Math.round(grand * 10) / 10].map(q).join(','));
   lines.push('', q('Service Manager v' + APP_VERSION));
   const csv = lines.join('\n');
   const a = document.createElement('a');
