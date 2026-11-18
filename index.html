@@ -14,6 +14,12 @@
     --red:#e31e24;
     --red-dark:#b71c1c;
     --red-soft:#fdecec;
+    --green:#1e9e57;
+    --green-dark:#17804a;
+    --green-soft:#e6f6ed;
+    --orange:#f5a000;
+    --orange-text:#a86400;
+    --orange-soft:#fff3d6;
     --black:#0a0a0a;
     --ink:#161616;
     --muted:#6b7075;
@@ -28,7 +34,9 @@
     font-family:'Inter',system-ui,-apple-system,Segoe UI,Arial,sans-serif;
     margin:0;background:var(--bg);color:var(--ink);
     font-size:15px;line-height:1.5;
+    min-height:100vh;display:flex;flex-direction:column;
   }
+  #appView{flex:1 0 auto}
 
   /* ---------- Header ---------- */
   header{
@@ -42,7 +50,15 @@
   .brand b{font-size:16px;font-weight:600;letter-spacing:.2px;display:block;line-height:1.2}
   .brand small{color:#a8abb0;font-size:12.5px}
 
-  main{max-width:820px;margin:0 auto;padding:20px 16px 60px}
+  main{max-width:820px;margin:0 auto;padding:20px 16px 40px}
+
+  /* ---------- Footer ---------- */
+  footer{
+    background:var(--black);color:#a8abb0;text-align:center;
+    padding:18px 16px;font-size:12.5px;line-height:1.7;
+    border-top:3px solid var(--red);flex-shrink:0;
+  }
+  footer div:first-child{color:#fff;font-weight:500}
 
   /* ---------- Cards ---------- */
   .card{
@@ -59,8 +75,10 @@
   }
   button:hover{background:#2a2a2a;border-color:#2a2a2a}
   button:active{transform:scale(.98)}
-  button.green{background:var(--red);border-color:var(--red)}          /* primary action */
-  button.green:hover{background:var(--red-dark);border-color:var(--red-dark)}
+  button.primary{background:var(--red);border-color:var(--red)}          /* brand red actions */
+  button.primary:hover{background:var(--red-dark);border-color:var(--red-dark)}
+  button.green{background:var(--green);border-color:var(--green)}        /* done / save */
+  button.green:hover{background:var(--green-dark);border-color:var(--green-dark)}
   button.grey{background:transparent;color:var(--ink);border-color:var(--line)}
   button.grey:hover{background:#f0f0f1;border-color:#d5d5d8}
   header button.grey{color:#fff;border-color:#3a3a3a}
@@ -90,7 +108,20 @@
   .datebar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .datebar label{margin:0}
   .datebar input{width:auto;margin:0}
-  #summary{margin:0 0 0 auto;font-weight:500;color:var(--ink)}
+
+  /* ---------- Progress meter ---------- */
+  .progress-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .progress-head b{font-size:14px;font-weight:600}
+  #pctText{font-size:22px;font-weight:700;line-height:1}
+  .bar{height:12px;background:#ececee;border-radius:20px;overflow:hidden;margin:10px 0 6px}
+  #barFill{height:100%;width:0;border-radius:20px;transition:width .5s ease,background .3s}
+  .progress.red    #barFill{background:var(--red)}
+  .progress.orange #barFill{background:var(--orange)}
+  .progress.green  #barFill{background:var(--green)}
+  .progress.red    #pctText{color:var(--red)}
+  .progress.orange #pctText{color:var(--orange-text)}
+  .progress.green  #pctText{color:var(--green)}
+  #summary{margin:0}
 
   /* ---------- Collapsible panels ---------- */
   details summary{
@@ -108,15 +139,16 @@
   .task::before{
     content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;
   }
-  .task.pending::before{background:var(--red)}
-  .task.done::before{background:var(--black)}
+  .task.pending::before{background:var(--orange)}
+  .task.done::before{background:var(--green)}
+  .task.done{background:#fcfefd}
   .task b{font-size:16px;font-weight:600}
   .badge{
     font-size:11.5px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;
     padding:3px 10px;border-radius:20px;
   }
-  .badge.pending{background:var(--red-soft);color:var(--red)}
-  .badge.done{background:var(--black);color:#fff}
+  .badge.pending{background:var(--orange-soft);color:var(--orange-text)}
+  .badge.done{background:var(--green);color:#fff}
   .task .row:last-child{margin-top:12px}
 
   /* ---------- Modal ---------- */
@@ -135,21 +167,19 @@
     border:1px solid var(--line);border-radius:10px;color:var(--ink);font-size:14.5px;cursor:pointer;
   }
   .checks label:hover{background:#fafafa}
-  .checks input{width:18px;height:18px;margin:0 10px 0 0;accent-color:var(--red)}
+  .checks input{width:18px;height:18px;margin:0 10px 0 0;accent-color:var(--green)}
 
   /* ---------- Login ---------- */
-  #loginView{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  #loginView{flex:1 0 auto;width:100%;max-width:none;display:flex;align-items:center;justify-content:center;padding:20px}
   .login-box{width:100%;max-width:370px;text-align:center}
   .login-box img{width:96px;height:96px;border-radius:50%;margin-bottom:14px}
   .login-box h2{margin:0 0 4px;font-size:22px}
   .login-box p.sub{color:var(--muted);margin:0 0 22px;font-size:14px}
   .login-box .card{text-align:left;padding:22px}
-  .login-box button{width:100%;padding:12px;background:var(--red);border-color:var(--red)}
-  .login-box button:hover{background:var(--red-dark);border-color:var(--red-dark)}
+  .login-box button{width:100%;padding:12px}
 
   @media (max-width:520px){
-    main{padding:14px 12px 50px}
-    #summary{margin-left:0;width:100%}
+    main{padding:14px 12px 30px}
     header{padding:10px 14px}
   }
 </style>
@@ -167,7 +197,7 @@
       <input id="email" type="email" placeholder="you@company.com">
       <label>Password</label>
       <input id="password" type="password" placeholder="••••••••">
-      <button id="loginBtn">Sign in</button>
+      <button id="loginBtn" class="primary">Sign in</button>
       <p class="err" id="loginErr"></p>
     </div>
   </div>
@@ -187,7 +217,16 @@
       <label><b>Date</b></label>
       <input type="date" id="dateSel">
       <button class="grey" id="todayBtn">Today</button>
-      <span id="summary" class="meta"></span>
+    </div>
+
+    <!-- DAILY PROGRESS -->
+    <div class="card progress hidden" id="progressCard">
+      <div class="progress-head">
+        <b>Daily progress</b>
+        <span id="pctText">0%</span>
+      </div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="summary" class="meta"></div>
     </div>
 
     <!-- ADMIN ONLY -->
@@ -197,7 +236,7 @@
           <summary>Add jobs</summary>
           <label>One job per line</label>
           <textarea id="newTasks" rows="4" placeholder="School CCTV service&#10;Kamal's home CCTV service&#10;Shop DVR troubleshooting"></textarea>
-          <button id="addTasksBtn" class="green">Post jobs to selected date</button>
+          <button id="addTasksBtn" class="primary">Post jobs to selected date</button>
         </details>
       </div>
       <div class="card">
@@ -227,6 +266,12 @@
     <div id="taskList"></div>
   </main>
 </div>
+
+<!-- FOOTER -->
+<footer>
+  <div>© Pentech Technologies. All rights reserved.</div>
+  <div>Designed and Developed by Sankha Mudhitha</div>
+</footer>
 
 <!-- MODAL -->
 <div id="modal" class="modal hidden">
@@ -318,21 +363,39 @@ function show(view) {
 }
 
 /* ---------- TASKS ---------- */
+// Pending first, done last. Pending: oldest posted first. Done: earliest completed first.
+const rank = t => t.status === 'done' ? 1 : 0;
+const stamp = t => ((t.status === 'done' ? t.completedAt : t.createdAt)?.seconds) ?? Number.MAX_SAFE_INTEGER;
+
 function listenTasks() {
   if (unsubTasks) unsubTasks();
   const q = query(collection(db, 'tasks'), where('date', '==', $('dateSel').value));
   unsubTasks = onSnapshot(q, s => {
     tasks = s.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
+      .sort((a, b) => rank(a) - rank(b) || stamp(a) - stamp(b));
     renderTasks();
   });
 }
 $('dateSel').onchange = listenTasks;
 $('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); };
 
-function renderTasks() {
+function renderProgress() {
+  const total = tasks.length;
+  const card = $('progressCard');
+  if (!total) { card.classList.add('hidden'); $('summary').textContent = ''; return; }
   const done = tasks.filter(t => t.status === 'done').length;
-  $('summary').textContent = tasks.length ? `${done} of ${tasks.length} completed` : '';
+  const pct = (done / total) * 100;
+  const level = pct < 40 ? 'red' : (pct >= 90 ? 'green' : 'orange');
+  card.classList.remove('hidden', 'red', 'orange', 'green');
+  card.classList.add(level);
+  $('pctText').textContent = Math.round(pct) + '%';
+  $('barFill').style.width = pct + '%';
+  $('summary').textContent = `${done} of ${total} jobs completed` +
+    (done < total ? ` • ${total - done} pending` : ' • All done 🎉');
+}
+
+function renderTasks() {
+  renderProgress();
   if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs posted for this date.</div>'; return; }
   $('taskList').innerHTML = tasks.map(t => `
     <div class="card task ${t.status}">
