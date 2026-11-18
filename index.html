@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CCTV Service Manager</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f1f4f8;color:#1c2733}
+  header{background:#0b3d63;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  header small{opacity:.8}
+  main{max-width:850px;margin:0 auto;padding:14px}
+  .card{background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0002}
+  .task.done{border-left:6px solid #1e9e57}
+  .task.pending{border-left:6px solid #e8a200}
+  .badge{font-size:12px;padding:2px 8px;border-radius:10px;color:#fff}
+  .badge.done{background:#1e9e57}.badge.pending{background:#e8a200}
+  button{padding:8px 14px;border:0;border-radius:6px;background:#0b3d63;color:#fff;cursor:pointer;font-size:14px}
+  button.green{background:#1e9e57}button.red{background:#c0392b}button.grey{background:#6c7a89}
+  input,textarea,select{width:100%;padding:9px;border:1px solid #bcc6d1;border-radius:6px;font-size:15px;margin:4px 0 10px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .row>*{flex:0 0 auto}
+  .hidden{display:none!important}
+  .modal{position:fixed;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;padding:12px;z-index:10}
+  .modal .box{background:#fff;border-radius:10px;padding:18px;width:100%;max-width:480px;max-height:90vh;overflow:auto}
+  .checks label{display:block;padding:4px 0}
+  .checks input{width:auto;margin:0 8px 0 0}
+  .meta{font-size:13px;color:#52606d;margin-top:6px}
+  details summary{cursor:pointer;font-weight:600}
+  .err{color:#c0392b;font-size:14px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<main id="loginView" class="hidden">
+  <div class="card" style="max-width:380px;margin:60px auto">
+    <h2>CCTV Service Manager</h2>
+    <input id="email" type="email" placeholder="Email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="loginBtn">Login</button>
+    <p class="err" id="loginErr"></p>
+  </div>
+</main>
+
+<!-- APP -->
+<div id="appView" class="hidden">
+  <header>
+    <div><b>CCTV Service Manager</b><br><small id="who"></small></div>
+    <button class="grey" id="logoutBtn">Logout</button>
+  </header>
+  <main>
+    <div class="card row">
+      <label><b>Date:</b></label>
+      <input type="date" id="dateSel" style="width:auto;margin:0">
+      <button class="grey" id="todayBtn">Today</button>
+      <span id="summary" class="meta"></span>
+    </div>
+
+    <!-- ADMIN ONLY -->
+    <div id="adminPanel" class="hidden">
+      <div class="card">
+        <details open>
+          <summary>➕ Add today's jobs (one job per line)</summary>
+          <textarea id="newTasks" rows="4" placeholder="School CCTV service&#10;Kamal's home CCTV service&#10;Shop DVR troubleshooting"></textarea>
+          <button id="addTasksBtn">Post jobs to selected date</button>
+        </details>
+      </div>
+      <div class="card">
+        <details>
+          <summary>👥 Team members</summary>
+          <div id="teamList" class="meta"></div>
+          <h4>Add worker</h4>
+          <input id="wName" placeholder="Worker name">
+          <input id="wEmail" type="email" placeholder="Worker email (login)">
+          <input id="wPass" type="text" placeholder="Password (min 6 chars)">
+          <button id="addWorkerBtn">Create worker</button>
+          <p class="err" id="wMsg"></p>
+        </details>
+      </div>
+      <div class="card">
+        <details>
+          <summary>⬇️ Export records (CSV)</summary>
+          <div class="row">
+            <input type="date" id="expFrom" style="width:auto"> to
+            <input type="date" id="expTo" style="width:auto">
+            <button id="exportBtn">Download</button>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div id="taskList"></div>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div id="modal" class="modal hidden">
+  <div class="box">
+    <h3 id="mTitle"></h3>
+    <div id="adminFields" class="hidden">
+      <label>Job title</label><input id="mJob">
+      <label>Notes / location (optional)</label><textarea id="mNotes" rows="2"></textarea>
+    </div>
+    <label><b>What was done?</b></label>
+    <textarea id="mWork" rows="4" placeholder="Describe the work you did..."></textarea>
+    <label><b>Who attended?</b></label>
+    <div id="mChecks" class="checks"></div>
+    <div id="adminStatus" class="hidden">
+      <label>Status</label>
+      <select id="mStatus"><option value="pending">Pending</option><option value="done">Done</option></select>
+    </div>
+    <p class="err" id="mErr"></p>
+    <div class="row">
+      <button class="green" id="mSave">Save</button>
+      <button class="grey" id="mCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
+         query, where, onSnapshot, getDocs, serverTimestamp, Timestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+/* ====== PASTE YOUR FIREBASE CONFIG HERE ====== */
+const firebaseConfig = {
+    apiKey: "AIzaSyAOX-OOJWVub_cjNbec09ertHpAwOv7YF4",
+    authDomain: "pentech-cctv-service-manager.firebaseapp.com",
+    projectId: "pentech-cctv-service-manager",
+    storageBucket: "pentech-cctv-service-manager.firebasestorage.app",
+    messagingSenderId: "944729312128",
+    appId: "1:944729312128:web:347904b86bce665dc6cf65",
+    measurementId: "G-8BYTGT2RSE"
+  };
+/* ============================================= */
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+let me = null, isAdmin = false, staff = [], tasks = [], unsubTasks = null, unsubUsers = null, editingId = null;
+
+/* ---------- AUTH ---------- */
+$('loginBtn').onclick = async () => {
+  $('loginErr').textContent = '';
+  try { await signInWithEmailAndPassword(auth, $('email').value.trim(), $('password').value); }
+  catch (e) { $('loginErr').textContent = 'Login failed: check email/password.'; }
+};
+$('logoutBtn').onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async user => {
+  if (unsubTasks) unsubTasks(); if (unsubUsers) unsubUsers();
+  if (!user) { me = null; show('loginView'); return; }
+  const snap = await getDoc(doc(db, 'users', user.uid));
+  if (!snap.exists() || !snap.data().active) {
+    alert('Your account has no access. Contact the admin.');
+    return signOut(auth);
+  }
+  me = { uid: user.uid, ...snap.data() };
+  isAdmin = me.role === 'admin';
+  $('who').textContent = `${me.name} (${isAdmin ? 'Admin' : 'Worker'})`;
+  $('adminPanel').classList.toggle('hidden', !isAdmin);
+  $('dateSel').value = todayStr();
+  show('appView');
+  unsubUsers = onSnapshot(collection(db, 'users'), s => {
+    staff = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderTeam();
+  });
+  listenTasks();
+});
+
+function show(view) {
+  $('loginView').classList.toggle('hidden', view !== 'loginView');
+  $('appView').classList.toggle('hidden', view !== 'appView');
+}
+
+/* ---------- TASKS ---------- */
+function listenTasks() {
+  if (unsubTasks) unsubTasks();
+  const q = query(collection(db, 'tasks'), where('date', '==', $('dateSel').value));
+  unsubTasks = onSnapshot(q, s => {
+    tasks = s.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAt?.seconds ?? 0) - (b.createdAt?.seconds ?? 0));
+    renderTasks();
+  });
+}
+$('dateSel').onchange = listenTasks;
+$('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); };
+
+function renderTasks() {
+  const done = tasks.filter(t => t.status === 'done').length;
+  $('summary').textContent = tasks.length ? `${done} of ${tasks.length} completed` : '';
+  if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs posted for this date.</div>'; return; }
+  $('taskList').innerHTML = tasks.map(t => `
+    <div class="card task ${t.status}">
+      <div class="row" style="justify-content:space-between">
+        <b>${esc(t.title)}</b>
+        <span class="badge ${t.status}">${t.status === 'done' ? '✔ Done' : 'Pending'}</span>
+      </div>
+      ${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
+      ${t.status === 'done' ? `
+        <div style="margin-top:8px"><b>Work done:</b> ${esc(t.workDone).replace(/\n/g,'<br>')}</div>
+        <div class="meta">👷 Attended: ${esc((t.attendedBy || []).join(', '))}<br>
+        Submitted by ${esc(t.completedByName)} • ${t.completedAt ? t.completedAt.toDate().toLocaleString() : ''}</div>` : ''}
+      <div class="row" style="margin-top:10px">
+        ${t.status === 'pending' ? `<button class="green" data-act="done" data-id="${t.id}">Mark done / report</button>` : ''}
+        ${isAdmin ? `<button data-act="edit" data-id="${t.id}">Edit</button>
+                     <button class="red" data-act="del" data-id="${t.id}">Delete</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+$('taskList').onclick = async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const t = tasks.find(x => x.id === b.dataset.id); if (!t) return;
+  if (b.dataset.act === 'del') {
+    if (confirm(`Delete "${t.title}"?`)) await deleteDoc(doc(db, 'tasks', t.id));
+  } else openModal(t, b.dataset.act);
+};
+
+/* ---------- ADMIN: add jobs ---------- */
+$('addTasksBtn').onclick = async () => {
+  const lines = $('newTasks').value.split('\n').map(s => s.trim()).filter(Boolean);
+  if (!lines.length) return;
+  const date = $('dateSel').value;
+  const expire = new Date(date); expire.setDate(expire.getDate() + 400);
+  for (const title of lines) {
+    await addDoc(collection(db, 'tasks'), {
+      date, title, notes: '', status: 'pending', workDone: '', attendedBy: [],
+      createdAt: serverTimestamp(), createdBy: me.uid,
+      expireAt: Timestamp.fromDate(expire)   // only used if you enable optional TTL
+    });
+  }
+  $('newTasks').value = '';
+};
+
+/* ---------- MODAL ---------- */
+function openModal(t, mode) {
+  editingId = t.id;
+  $('mErr').textContent = '';
+  $('mTitle').textContent = mode === 'edit' ? 'Edit job' : t.title;
+  $('adminFields').classList.toggle('hidden', mode !== 'edit');
+  $('adminStatus').classList.toggle('hidden', mode !== 'edit');
+  $('mJob').value = t.title; $('mNotes').value = t.notes || '';
+  $('mWork').value = t.workDone || ''; $('mStatus').value = t.status;
+  const attended = t.attendedBy || [];
+  $('mChecks').innerHTML = staff.filter(s => s.active).map(s =>
+    `<label><input type="checkbox" value="${esc(s.name)}" ${attended.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>`).join('');
+  $('modal').classList.remove('hidden');
+  $('modal').dataset.mode = mode;
+}
+$('mCancel').onclick = () => $('modal').classList.add('hidden');
+
+$('mSave').onclick = async () => {
+  const mode = $('modal').dataset.mode;
+  const work = $('mWork').value.trim();
+  const attended = [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value);
+  try {
+    if (mode === 'edit') {
+      const status = $('mStatus').value;
+      const data = { title: $('mJob').value.trim(), notes: $('mNotes').value.trim(),
+                     workDone: work, attendedBy: attended, status };
+      if (status === 'done') { data.completedAt = serverTimestamp(); data.completedBy = me.uid; data.completedByName = me.name; }
+      await updateDoc(doc(db, 'tasks', editingId), data);
+    } else {
+      if (!work) return $('mErr').textContent = 'Please describe what was done.';
+      if (!attended.length) return $('mErr').textContent = 'Select who attended.';
+      await updateDoc(doc(db, 'tasks', editingId), {
+        status: 'done', workDone: work, attendedBy: attended,
+        completedAt: serverTimestamp(), completedBy: me.uid, completedByName: me.name
+      });
+    }
+    $('modal').classList.add('hidden');
+  } catch (e) { $('mErr').textContent = 'Save failed: ' + e.message; }
+};
+
+/* ---------- ADMIN: team ---------- */
+function renderTeam() {
+  if (!isAdmin) return;
+  $('teamList').innerHTML = staff.map(s => `
+    <div class="row" style="margin:4px 0">
+      <span>${esc(s.name)} — ${esc(s.email)} (${s.role})${s.active ? '' : ' <i>[disabled]</i>'}</span>
+      ${s.id !== me.uid ? `<button class="grey" data-uid="${s.id}" data-active="${s.active}">${s.active ? 'Disable' : 'Enable'}</button>` : ''}
+    </div>`).join('');
+}
+$('teamList').onclick = async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  await updateDoc(doc(db, 'users', b.dataset.uid), { active: b.dataset.active !== 'true' });
+};
+
+$('addWorkerBtn').onclick = async () => {
+  const name = $('wName').value.trim(), email = $('wEmail').value.trim(), pass = $('wPass').value;
+  $('wMsg').textContent = '';
+  if (!name || !email || pass.length < 6) return $('wMsg').textContent = 'Fill all fields (password min 6).';
+  try {
+    // secondary app so the admin stays logged in
+    const second = initializeApp(firebaseConfig, 'secondary' + Date.now());
+    const cred = await createUserWithEmailAndPassword(getAuth(second), email, pass);
+    await setDoc(doc(db, 'users', cred.user.uid), { name, email, role: 'worker', active: true });
+    await signOut(getAuth(second));
+    $('wName').value = $('wEmail').value = $('wPass').value = '';
+    $('wMsg').style.color = '#1e9e57'; $('wMsg').textContent = 'Worker created.';
+  } catch (e) { $('wMsg').style.color = ''; $('wMsg').textContent = e.message; }
+};
+
+/* ---------- ADMIN: export ---------- */
+$('exportBtn').onclick = async () => {
+  const from = $('expFrom').value, to = $('expTo').value;
+  if (!from || !to) return alert('Choose both dates');
+  const s = await getDocs(query(collection(db, 'tasks'), where('date', '>=', from), where('date', '<=', to)));
+  const rows = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const csv = ['Date,Job,Notes,Status,Work Done,Attended By,Submitted By,Completed At']
+    .concat(rows.map(r => [r.date, r.title, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
+      r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : ''].map(q).join(','))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `cctv-records_${from}_to_${to}.csv`; a.click();
+};
+</script>
+</body>
+</html>
