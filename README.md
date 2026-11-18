@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assests/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
+<img src="assets/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
 
 <br>
 
-![Version](https://img.shields.io/badge/version-1.9-e31e24?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.0-e31e24?style=for-the-badge)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
 ![Hosted on](https://img.shields.io/badge/hosted%20on-GitHub%20Pages-0a0a0a?style=for-the-badge&logo=github)
 ![Single file](https://img.shields.io/badge/app-one%20index.html-1e9e57?style=for-the-badge)
@@ -29,8 +29,8 @@ No build step, no server. It is one `index.html` talking to Firebase.
 | Flag a job as **cannot access workplace** (roadblock, locked gate…) with the reason | edit / clear | ✅ |
 | Edit / delete jobs, change status | ✅ | |
 | Mark jobs as invoiced (invoice number) | ✅ | |
-| Enter daily **start km / end km** | ✅ | ✅ |
-| See monthly kilometres | all workers + per worker | own total |
+| Enter the vehicle's **start km** (morning) / **end km** (evening), **today only** | correct any day | ✅ |
+| See kilometres driven this month | ✅ | ✅ |
 | Add or disable team members | ✅ | |
 | Export CSV report | ✅ | |
 | Daily progress meter (red → orange → green) | ✅ | ✅ |
@@ -40,7 +40,7 @@ No build step, no server. It is one `index.html` talking to Firebase.
 ## 🔄 The workflow
 
 <div align="center">
-  <img src="assests/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
+  <img src="assets/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
 </div>
 
 ### Day to day
@@ -54,7 +54,7 @@ sequenceDiagram
 
     A->>S: Post job (title, phone, address)
     S-->>W: Job appears on the selected date
-    W->>S: Save start km (morning)
+    W->>S: Save vehicle start km (morning, locks for everyone)
     W->>W: Drive to the address (Maps link)
     alt Site reachable
         W->>S: Report work done + who attended
@@ -64,7 +64,7 @@ sequenceDiagram
         W->>S: Tick "Cannot access workplace" and describe the problem
         S-->>A: Job flagged red with the reason (stays pending)
     end
-    W->>S: Save end km (evening)
+    W->>S: Save vehicle end km (evening, any worker)
     S-->>A: Km added to the monthly total
 ```
 
@@ -75,10 +75,8 @@ flowchart LR
     A([Pick date range]) --> B[Export records CSV]
     B --> C[(Jobs section)]
     B --> D[(Vehicle mileage section)]
-    D --> E[Per-worker totals]
-    D --> F[Overall km total]
+    D --> F[Km per day + month total]
     C --> G{{Open in Excel / Sheets}}
-    E --> G
     F --> G
 ```
 
@@ -97,14 +95,14 @@ Roadblock? Locked gate? Nobody home? On the job's **report** screen the worker t
 
 ## 🚗 Vehicle mileage
 
-Found at the **bottom of the page**.
+Found at the **bottom of the page**. The team shares one company vehicle, so there is **one record per day**.
 
-1. Pick the date at the top.
-2. Type the odometer **start km** in the morning and save.
-3. Type the **end km** when the day is done and save again.
-4. The app shows that day's kilometres, the **month total**, and a **day-by-day running total**.
+1. **Morning:** any worker types the odometer **start km** and taps **Save start km**. It is then **greyed out and locked for everyone**, with the name of who saved it.
+2. **Evening:** the **end km** box opens. Any worker types it and taps **Save end km**. It can't be lower than the start km, and once saved the day is complete.
+3. Start and end can never be saved together, and workers can only enter **today's** mileage, whatever date is selected at the top.
+4. Everyone sees the **kilometres driven this month** and a day-by-day running total.
 
-Admins see every worker's entries, a per-worker total, and the combined total. The month follows the selected date, so past months are one date-change away.
+The admin can pick any date to look at past months or correct a wrong reading.
 
 ---
 
@@ -128,7 +126,7 @@ Admins see every worker's entries, a per-worker total, and the combined total. T
 ├── firestore.rules   # database security rules (keep in sync with Firebase)
 ├── CHANGELOG.md      # what changed in each version
 ├── README.md         # you are here
-└── assests/
+└── assets/
     ├── banner.svg    # animated header
     └── workflow.svg  # animated workflow
 ```
@@ -160,17 +158,7 @@ After that, add workers from inside the app (**Team members → Add worker**).
 
 ### 3. Security rules
 
-Publish rules for the `users`, `tasks` and `mileage` collections. The full file is [`firestore.rules`](firestore.rules). The mileage part (it uses the `isAdmin()` / `isStaff()` helpers defined at the top of that file):
-
-```
-match /mileage/{id} {
-  allow read: if isAdmin() || (isStaff() && resource.data.uid == request.auth.uid);
-  allow create, update: if isStaff()
-      && request.resource.data.uid == request.auth.uid
-      && id == request.auth.uid + '_' + request.resource.data.date;
-  allow delete: if false;
-}
-```
+Publish rules for the `users`, `tasks` and `dailyMileage` collections. The full file is [`firestore.rules`](firestore.rules). It also defines a `lkToday()` helper (today's date in Sri Lanka time, UTC+5:30) so workers can only write today's mileage. The helpers `isAdmin()` / `isStaff()` are defined at the top of the same file.
 
 > 🔐 The Firebase config in `index.html` is a public web key, so it is fine in a repo. **Your Firestore rules are what protect the data.** Check them before making the repo public.
 
@@ -209,15 +197,14 @@ match /mileage/{id} {
 | `invoiced`, `invoiceNo`, `invoicedAt`, `invoicedBy` | invoice tracking |
 | `createdAt`, `createdBy`, `expireAt` | housekeeping (`expireAt` is only used if you enable Firestore TTL) |
 
-**`mileage/{uid}_{YYYY-MM-DD}`**, one per worker per day
+**`dailyMileage/{YYYY-MM-DD}`**, one shared record per day
 
 | Field | Meaning |
 |---|---|
-| `uid`, `name` | the worker |
-| `date`, `month` | the day, and `YYYY-MM` for monthly totals |
-| `startKm`, `endKm` | odometer readings (`endKm` can be empty until the evening) |
-| `km` | `endKm - startKm`, calculated on save |
-| `updatedAt` | last save |
+| `date`, `month` | the day, and `YYYY-MM` for the monthly total |
+| `startKm`, `startByName`, `startByUid`, `startAt` | morning reading and who saved it (locked after saving) |
+| `endKm`, `endByName`, `endByUid`, `endAt` | evening reading (`null` until saved) |
+| `km` | `endKm - startKm`, calculated when the end is saved |
 
 </details>
 
@@ -228,7 +215,7 @@ match /mileage/{id} {
 Each feature release bumps the version (1.8 → 1.9 → 2.0 …) and a small fix adds a third digit (**1.9.1**). The current version is set in one place:
 
 ```js
-const APP_VERSION = '1.9';   // inside index.html
+const APP_VERSION = '2.0';   // inside index.html
 ```
 
 It shows on the login screen and in the footer.
@@ -256,8 +243,8 @@ python -m http.server 8000
 **Tag a release:**
 
 ```bash
-git tag -a v1.9 -m "Version 1.9"
-git push origin v1.9
+git tag -a v2.0 -m "Version 2.0"
+git push origin v2.0
 ```
 
 **Roll back a bad release:**
@@ -275,7 +262,8 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 
 | Problem | Likely cause |
 |---|---|
-| "Missing or insufficient permissions" on mileage | `mileage` rules not published, or the rule uses a variable name (like `$(database)`) that doesn't match your `match /databases/{...}` line |
+| "Missing or insufficient permissions" on mileage | `dailyMileage` rules not published, or the rules file has a variable name (like `$(database)`) that doesn't match your `match /databases/{...}` line |
+| "Could not save" on mileage | Someone already saved that reading, or it is not today's date |
 | Login fails on the live site | `<username>.github.io` missing from Firebase authorized domains |
 | Old version still showing | Wait a minute, then hard refresh with **Ctrl + Shift + R** |
 | Worker can't save a "cannot access" report | Rules from 1.9 not published yet (workers need permission to update the access fields) |
@@ -288,6 +276,6 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 © Pentech Technologies. All rights reserved.
 Designed and Developed by Sankha Mudhitha
 
-<sub>Service Manager · v1.9</sub>
+<sub>Service Manager · v2.0</sub>
 
 </div>
