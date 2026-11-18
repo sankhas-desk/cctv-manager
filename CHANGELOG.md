@@ -2,6 +2,20 @@
 
 All notable changes to Service Manager. Newest first.
 
+## [2.0] - 2026-11-18
+### Changed
+- **Vehicle mileage is now one shared record per day** (one company vehicle) instead of one per worker. There are no per-worker mileage reports, only the kilometres driven in the month.
+- **Workers can only add mileage for today.** Changing the date at the top no longer changes which day they are entering. (The admin can still pick any date to correct a reading.)
+- **Start in the morning, end in the evening, never both at once.**
+  - Any worker saves the start km; it is then greyed out and locked for everyone, and shows who saved it and when.
+  - The end km box opens only after the start is saved. Any worker saves it once, and the day is complete.
+  - End km cannot be less than start km.
+- CSV report: mileage section is now one row per day (date, start, end, km, who entered each) with month totals.
+- Mileage now uses a new Firestore collection, `dailyMileage`. The old per-worker `mileage` collection from 1.8 / 1.9 is no longer read.
+
+### Requires
+- Updated `firestore.rules` (new `dailyMileage` rules). **Publish the rules before releasing.**
+
 ## [1.9] - 2026-11-18
 ### Added
 - **Cannot access workplace** checkbox on the job report. Workers tick it when a roadblock, locked gate or similar stops them reaching the site, and a text box opens to describe what happened.
