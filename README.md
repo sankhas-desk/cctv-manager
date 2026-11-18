@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
+<img src="assests/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
 
 <br>
 
@@ -39,7 +39,7 @@ No build step, no server. It is one `index.html` talking to Firebase.
 ## 🔄 The workflow
 
 <div align="center">
-  <img src="assets/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
+  <img src="assests/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
 </div>
 
 ### Day to day
@@ -110,7 +110,7 @@ Admins see every worker's entries, a per-worker total, and the combined total. T
 ├── firestore.rules   # database security rules (keep in sync with Firebase)
 ├── CHANGELOG.md      # what changed in each version
 ├── README.md         # you are here
-└── assets/
+└── assests/
     ├── banner.svg    # animated header
     └── workflow.svg  # animated workflow
 ```
