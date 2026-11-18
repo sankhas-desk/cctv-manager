@@ -2,6 +2,17 @@
 
 All notable changes to Service Manager. Newest first.
 
+## [1.9] - 2026-11-18
+### Added
+- **Cannot access workplace** checkbox on the job report. Workers tick it when a roadblock, locked gate or similar stops them reaching the site, and a text box opens to describe what happened.
+- The job stays **pending** (not counted as completed) and is flagged with a red "Cannot access" badge and the reason, who reported it and when.
+- The worker can reopen the job later with "Update report" and complete it normally once the site is reachable.
+- Admin sees blocked jobs at the top of the list, and the daily summary shows how many jobs cannot be accessed. Admin can also edit or clear the flag from Edit.
+- CSV report has three new columns: Cannot Access, Access Issue, Access Reported By.
+
+### Requires
+- Updated `firestore.rules` (workers may now update `accessIssue`, `accessNote`, `accessReportedByName`, `accessReportedAt` on a pending job). **Publish the rules before releasing.**
+
 ## [1.8] - 2026-11-18
 ### Added
 - Admin must enter the job address when posting a job (also required when editing). Address shows on job cards as a Google Maps link.
