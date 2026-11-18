@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Service Manager | Version 1.8 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -185,6 +186,22 @@
   .checks label:hover{background:#fafafa}
   .checks input{width:18px;height:18px;margin:0 10px 0 0;accent-color:var(--green)}
 
+  /* ---------- Vehicle mileage ---------- */
+  .milerow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .km-total{
+    display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
+    background:var(--green-soft);border:1px solid #c9ead7;border-radius:12px;padding:12px 14px;margin:6px 0 12px;
+  }
+  .km-total span{font-size:13px;color:var(--muted);font-weight:500}
+  .km-total b{font-size:22px;font-weight:700;color:var(--green)}
+  .km-wrap{overflow-x:auto}
+  table.km{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.km th{text-align:left;font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.3px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.km td{padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  table.km td.n,table.km th.n{text-align:right}
+  .km-sub{margin:14px 0 6px;font-size:14px;font-weight:600}
+  .ver{opacity:.8}
+
   /* ---------- Login ---------- */
   #loginView{flex:1 0 auto;width:100%;max-width:none;display:flex;align-items:center;justify-content:center;padding:20px}
   .login-box{width:100%;max-width:370px;text-align:center}
@@ -193,6 +210,7 @@
   .login-box p.sub{color:var(--muted);margin:0 0 22px;font-size:14px}
   .login-box .card{text-align:left;padding:22px}
   .login-box button{width:100%;padding:12px}
+  .login-ver{margin-top:14px;font-size:12px;color:var(--muted)}
 
   @media (max-width:520px){
     main{padding:14px 12px 30px}
@@ -216,6 +234,7 @@
       <button id="loginBtn" class="primary">Sign in</button>
       <p class="err" id="loginErr"></p>
     </div>
+    <div class="login-ver">Version <span class="appVer"></span></div>
   </div>
 </main>
 
@@ -282,6 +301,32 @@
     </div>
 
     <div id="taskList"></div>
+
+    <!-- VEHICLE MILEAGE (bottom of page) -->
+    <div class="card" id="mileageCard">
+      <details open>
+        <summary>Vehicle mileage</summary>
+        <div class="meta" id="kmDateLbl" style="margin:0 0 8px"></div>
+        <div class="milerow">
+          <div><label for="kmStart"><b>Start km</b> (odometer)</label>
+            <input id="kmStart" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 45210"></div>
+          <div><label for="kmEnd"><b>End km</b> (odometer)</label>
+            <input id="kmEnd" type="number" inputmode="decimal" min="0" step="any" placeholder="e.g. 45286"></div>
+        </div>
+        <div class="row">
+          <button class="green" id="kmSaveBtn">Save mileage</button>
+          <span class="meta" id="kmDay" style="margin:0"></span>
+        </div>
+        <p class="err" id="kmMsg"></p>
+
+        <div class="km-total">
+          <span id="kmMonthLbl">This month</span>
+          <b id="kmMonthTotal">0 km</b>
+        </div>
+        <div id="kmByWorker"></div>
+        <div id="kmList"></div>
+      </details>
+    </div>
   </main>
 </div>
 
@@ -289,6 +334,7 @@
 <footer>
   <div>© Pentech Technologies. All rights reserved.</div>
   <div>Designed and Developed by Sankha Mudhitha</div>
+  <div class="ver">Version <span class="appVer"></span></div>
 </footer>
 
 <!-- MODAL -->
@@ -353,6 +399,9 @@ const firebaseConfig = {
   };
 /* ============================================= */
 
+const APP_VERSION = '1.8';
+document.querySelectorAll('.appVer').forEach(e => e.textContent = APP_VERSION);
+
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
@@ -362,6 +411,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
 
 let me = null, isAdmin = false, staff = [], tasks = [], unsubTasks = null, unsubUsers = null, editingId = null;
+let mileage = [], unsubMile = null, mileMonth = null;
 
 /* ---------- AUTH ---------- */
 $('loginBtn').onclick = async () => {
@@ -372,7 +422,8 @@ $('loginBtn').onclick = async () => {
 $('logoutBtn').onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, async user => {
-  if (unsubTasks) unsubTasks(); if (unsubUsers) unsubUsers();
+  if (unsubTasks) unsubTasks(); if (unsubUsers) unsubUsers(); if (unsubMile) unsubMile();
+  unsubMile = null; mileMonth = null; mileage = [];
   if (!user) { me = null; show('loginView'); return; }
   const snap = await getDoc(doc(db, 'users', user.uid));
   if (!snap.exists() || !snap.data().active) {
@@ -390,6 +441,7 @@ onAuthStateChanged(auth, async user => {
     renderTeam();
   });
   listenTasks();
+  listenMileage();
 });
 
 function show(view) {
@@ -419,8 +471,8 @@ function listenTasks() {
     renderTasks();
   });
 }
-$('dateSel').onchange = listenTasks;
-$('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); };
+$('dateSel').onchange = () => { listenTasks(); listenMileage(); };
+$('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); listenMileage(); };
 
 function renderProgress() {
   const total = tasks.length;
@@ -532,6 +584,96 @@ $('addTasksBtn').onclick = async () => {
   $('addTasksBtn').disabled = false;
 };
 
+/* ---------- VEHICLE MILEAGE ----------
+   One document per worker per day:  mileage/{uid}_{YYYY-MM-DD}
+   Workers see their own km; the admin sees every worker + the combined total. */
+const fmtKm = n => (Math.round((Number(n) || 0) * 10) / 10).toLocaleString(undefined, { maximumFractionDigits: 1 });
+const monthLabel = m => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); };
+
+function listenMileage() {
+  if (!me) return;
+  const month = ($('dateSel').value || todayStr()).slice(0, 7);
+  if (month === mileMonth && unsubMile) { renderMileage(); return; }   // same month: nothing to re-fetch
+  if (unsubMile) unsubMile();
+  mileMonth = month; mileage = [];
+  const q = isAdmin
+    ? query(collection(db, 'mileage'), where('month', '==', month))
+    : query(collection(db, 'mileage'), where('uid', '==', me.uid), where('month', '==', month));
+  unsubMile = onSnapshot(q, s => {
+    mileage = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
+    renderMileage();
+  }, e => { $('kmMsg').style.color = ''; $('kmMsg').textContent = 'Could not load mileage: ' + e.message; });
+  renderMileage();
+}
+
+function renderMileage() {
+  if (!me) return;
+  const date = $('dateSel').value, month = date.slice(0, 7);
+  $('kmDateLbl').textContent = 'Enter the odometer reading for ' + date;
+
+  // fill the inputs from the saved entry (unless the person is typing right now)
+  const mine = mileage.find(m => m.uid === me.uid && m.date === date);
+  if (document.activeElement !== $('kmStart') && document.activeElement !== $('kmEnd')) {
+    $('kmStart').value = mine ? mine.startKm : '';
+    $('kmEnd').value = mine && mine.endKm != null ? mine.endKm : '';
+  }
+  $('kmDay').textContent = !mine ? 'No mileage saved for this day.'
+    : (mine.endKm != null ? `Driven today: ${fmtKm(mine.km)} km` : 'Start saved – add the end km when you finish.');
+
+  // running totals (per worker, adding up day by day)
+  const run = {};
+  const rows = mileage.map(m => {
+    run[m.uid] = (run[m.uid] || 0) + (Number(m.km) || 0);
+    return { ...m, running: run[m.uid] };
+  });
+  const total = rows.reduce((a, m) => a + (Number(m.km) || 0), 0);
+  $('kmMonthLbl').textContent = (isAdmin ? 'All workers – ' : 'Your total – ') + monthLabel(month);
+  $('kmMonthTotal').textContent = fmtKm(total) + ' km';
+
+  // admin: per-worker totals
+  if (isAdmin && rows.length) {
+    const by = {};
+    rows.forEach(m => { by[m.uid] = by[m.uid] || { name: m.name, km: 0 }; by[m.uid].km += Number(m.km) || 0; });
+    $('kmByWorker').innerHTML = `<div class="km-sub">Per worker</div><div class="km-wrap"><table class="km"><tbody>` +
+      Object.values(by).sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        .map(w => `<tr><td>${esc(w.name)}</td><td class="n"><b>${fmtKm(w.km)} km</b></td></tr>`).join('') +
+      `</tbody></table></div>`;
+  } else $('kmByWorker').innerHTML = '';
+
+  // daily list
+  if (!rows.length) { $('kmList').innerHTML = '<div class="meta">No mileage recorded this month.</div>'; return; }
+  $('kmList').innerHTML = `<div class="km-sub">Daily record</div><div class="km-wrap"><table class="km"><thead><tr>
+      <th>Date</th>${isAdmin ? '<th>Worker</th>' : ''}<th class="n">Start</th><th class="n">End</th><th class="n">Km</th><th class="n">${isAdmin ? 'Worker total' : 'Month total'}</th>
+    </tr></thead><tbody>` +
+    rows.map(m => `<tr><td>${esc(m.date.slice(5))}</td>${isAdmin ? `<td>${esc(m.name)}</td>` : ''}
+      <td class="n">${fmtKm(m.startKm)}</td><td class="n">${m.endKm != null ? fmtKm(m.endKm) : '—'}</td>
+      <td class="n"><b>${m.endKm != null ? fmtKm(m.km) : '—'}</b></td><td class="n">${fmtKm(m.running)}</td></tr>`).join('') +
+    `</tbody></table></div>`;
+}
+
+$('kmSaveBtn').onclick = async () => {
+  const msg = $('kmMsg'); msg.style.color = ''; msg.textContent = '';
+  const date = $('dateSel').value;
+  const start = parseFloat($('kmStart').value);
+  const endRaw = $('kmEnd').value.trim();
+  const end = endRaw === '' ? null : parseFloat(endRaw);
+  if (!date) { msg.textContent = 'Choose a date first.'; return; }
+  if (isNaN(start) || start < 0) { msg.textContent = 'Enter the start mileage.'; return; }
+  if (end !== null && (isNaN(end) || end < start)) { msg.textContent = 'End mileage cannot be less than the start mileage.'; return; }
+  $('kmSaveBtn').disabled = true;
+  try {
+    await setDoc(doc(db, 'mileage', `${me.uid}_${date}`), {
+      uid: me.uid, name: me.name, date, month: date.slice(0, 7),
+      startKm: start, endKm: end, km: end === null ? 0 : Math.round((end - start) * 10) / 10,
+      updatedAt: serverTimestamp()
+    });
+    msg.style.color = '#1e9e57'; msg.textContent = 'Mileage saved.';
+    document.activeElement.blur();
+    renderMileage();
+  } catch (e) { msg.textContent = 'Could not save: ' + e.message; }
+  $('kmSaveBtn').disabled = false;
+};
+
 /* ---------- MODAL ---------- */
 function openModal(t, mode) {
   editingId = t.id;
@@ -640,10 +782,22 @@ $('exportBtn').onclick = async () => {
   const s = await getDocs(query(collection(db, 'tasks'), where('date', '>=', from), where('date', '<=', to)));
   const rows = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = ['Date,Job,Phone,Address,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
+  const lines = ['Date,Job,Phone,Address,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
     .concat(rows.map(r => [r.date, r.title, r.phone, r.address, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
       r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : '',
-      r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(','))).join('\n');
+      r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(',')));
+
+  // vehicle mileage section (same period)
+  const ms = await getDocs(query(collection(db, 'mileage'), where('date', '>=', from), where('date', '<=', to)));
+  const km = ms.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
+  lines.push('', 'VEHICLE MILEAGE', 'Date,Worker,Start km,End km,Km driven');
+  km.forEach(m => lines.push([m.date, m.name, m.startKm, m.endKm ?? '', m.km].map(q).join(',')));
+  const perWorker = {}; let grand = 0;
+  km.forEach(m => { perWorker[m.name] = (perWorker[m.name] || 0) + (Number(m.km) || 0); grand += Number(m.km) || 0; });
+  Object.keys(perWorker).sort().forEach(n => lines.push(['Total', n, '', '', Math.round(perWorker[n] * 10) / 10].map(q).join(',')));
+  lines.push(['Total (all workers)', '', '', '', Math.round(grand * 10) / 10].map(q).join(','));
+  lines.push('', q('Service Manager v' + APP_VERSION));
+  const csv = lines.join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `cctv-records_${from}_to_${to}.csv`; a.click();
