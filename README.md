@@ -142,16 +142,14 @@ After that, add workers from inside the app (**Team members → Add worker**).
 
 ### 3. Security rules
 
-Publish rules for the `users`, `tasks` and `mileage` collections. The mileage part:
+Publish rules for the `users`, `tasks` and `mileage` collections. The full file is [`firestore.rules`](firestore.rules). The mileage part (it uses the `isAdmin()` / `isStaff()` helpers defined at the top of that file):
 
 ```
 match /mileage/{id} {
-  allow read: if request.auth != null &&
-    (resource.data.uid == request.auth.uid ||
-     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
-  allow create, update: if request.auth != null &&
-    request.resource.data.uid == request.auth.uid &&
-    id == request.auth.uid + '_' + request.resource.data.date;
+  allow read: if isAdmin() || (isStaff() && resource.data.uid == request.auth.uid);
+  allow create, update: if isStaff()
+      && request.resource.data.uid == request.auth.uid
+      && id == request.auth.uid + '_' + request.resource.data.date;
   allow delete: if false;
 }
 ```
@@ -257,7 +255,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 
 | Problem | Likely cause |
 |---|---|
-| "Permission denied" when saving mileage | `mileage` rules not published, or the admin check doesn't match your `users` documents |
+| "Missing or insufficient permissions" on mileage | `mileage` rules not published, or the rule uses a variable name (like `$(database)`) that doesn't match your `match /databases/{...}` line |
 | Login fails on the live site | `<username>.github.io` missing from Firebase authorized domains |
 | Old version still showing | Wait a minute, then hard refresh with **Ctrl + Shift + R** |
 | Old job asks for an address when editing | Expected. Jobs posted before 1.8 have no address yet |
