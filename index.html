@@ -109,10 +109,12 @@
   /* ---------- Add-job rows ---------- */
   .jobrow{display:grid;grid-template-columns:1fr 180px 42px;gap:8px;margin-bottom:8px}
   .jobrow input{margin:0}
+  .jobrow .ja{grid-column:1 / -1}
   .jobrow button{padding:0;width:42px}
   @media (max-width:520px){
     .jobrow{grid-template-columns:1fr 42px}
     .jobrow .jp{grid-column:1;grid-row:2}
+    .jobrow .ja{grid-column:1;grid-row:3}
   }
 
   /* ---------- Date bar ---------- */
@@ -298,7 +300,8 @@
     <div id="adminFields" class="hidden">
       <label>Job title</label><input id="mJob">
       <label>Phone number</label><input id="mPhone" type="tel" inputmode="tel">
-      <label>Notes / location (optional)</label><textarea id="mNotes" rows="2"></textarea>
+      <label>Job address <span style="color:var(--red)">*</span></label><input id="mAddress" placeholder="Address of the job site">
+      <label>Notes (optional)</label><textarea id="mNotes" rows="2"></textarea>
     </div>
 
     <!-- worker report fields -->
@@ -452,6 +455,7 @@ function renderTasks() {
         </div>
       </div>
       ${t.phone ? `<div class="meta">Phone: <a href="tel:${esc(tel)}">${esc(t.phone)}</a></div>` : ''}
+      ${t.address ? `<div class="meta">📍 Address: <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}" target="_blank" rel="noopener">${esc(t.address)}</a></div>` : ''}
       ${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
       ${isDone ? `
         <div style="margin-top:8px"><b style="font-size:14px">Work done:</b> ${esc(t.workDone).replace(/\n/g,'<br>')}</div>
@@ -483,7 +487,8 @@ function addRow() {
   d.className = 'jobrow';
   d.innerHTML = `<input class="jt" placeholder="Job (e.g. School CCTV service)">
                  <input class="jp" type="tel" inputmode="tel" placeholder="Phone number">
-                 <button type="button" class="grey" title="Remove">✕</button>`;
+                 <button type="button" class="grey" title="Remove">✕</button>
+                 <input class="ja" placeholder="Job address (required)">`;
   d.querySelector('button').onclick = () => {
     if ($('jobRows').children.length > 1) d.remove();
     else d.querySelectorAll('input').forEach(i => i.value = '');
@@ -494,18 +499,28 @@ $('addRowBtn').onclick = addRow;
 addRow();
 
 $('addTasksBtn').onclick = async () => {
-  const rows = [...document.querySelectorAll('#jobRows .jobrow')].map(r => ({
+  const allRows = [...document.querySelectorAll('#jobRows .jobrow')].map(r => ({
+    el: r,
     title: r.querySelector('.jt').value.trim(),
-    phone: r.querySelector('.jp').value.trim()
-  })).filter(r => r.title);
+    phone: r.querySelector('.jp').value.trim(),
+    address: r.querySelector('.ja').value.trim()
+  }));
+  allRows.forEach(r => r.el.querySelector('.ja').style.borderColor = '');
+  const rows = allRows.filter(r => r.title);
   if (!rows.length) return;
+  const missing = rows.filter(r => !r.address);
+  if (missing.length) {
+    missing.forEach(r => r.el.querySelector('.ja').style.borderColor = 'var(--red)');
+    missing[0].el.querySelector('.ja').focus();
+    return alert('Please enter the job address for every job before posting.');
+  }
   const date = $('dateSel').value;
   const expire = new Date(date); expire.setDate(expire.getDate() + 400);
   $('addTasksBtn').disabled = true;
   try {
     for (const r of rows) {
       await addDoc(collection(db, 'tasks'), {
-        date, title: r.title, phone: r.phone, notes: '',
+        date, title: r.title, phone: r.phone, address: r.address, notes: '',
         status: 'pending', workDone: '', attendedBy: [],
         invoiced: false, invoiceNo: '',
         createdAt: serverTimestamp(), createdBy: me.uid,
@@ -529,7 +544,7 @@ function openModal(t, mode) {
   $('workFields').classList.toggle('hidden', inv);
   $('invoiceFields').classList.toggle('hidden', !inv);
   $('mRemoveInv').classList.toggle('hidden', !(inv && t.invoiced));
-  $('mJob').value = t.title; $('mPhone').value = t.phone || ''; $('mNotes').value = t.notes || '';
+  $('mJob').value = t.title; $('mPhone').value = t.phone || ''; $('mAddress').value = t.address || ''; $('mNotes').value = t.notes || '';
   $('mWork').value = t.workDone || ''; $('mStatus').value = t.status;
   $('mInvNo').value = t.invoiceNo || '';
   const attended = t.attendedBy || [];
@@ -561,9 +576,11 @@ $('mSave').onclick = async () => {
       const t = tasks.find(x => x.id === editingId);
       const title = $('mJob').value.trim();
       if (!title) return $('mErr').textContent = 'Job title cannot be empty.';
+      const address = $('mAddress').value.trim();
+      if (!address) return $('mErr').textContent = 'Job address is required.';
       const status = $('mStatus').value;
       const data = {
-        title, phone: $('mPhone').value.trim(), notes: $('mNotes').value.trim(),
+        title, phone: $('mPhone').value.trim(), address, notes: $('mNotes').value.trim(),
         workDone: $('mWork').value.trim(),
         attendedBy: [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value),
         status
@@ -623,8 +640,8 @@ $('exportBtn').onclick = async () => {
   const s = await getDocs(query(collection(db, 'tasks'), where('date', '>=', from), where('date', '<=', to)));
   const rows = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const csv = ['Date,Job,Phone,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
-    .concat(rows.map(r => [r.date, r.title, r.phone, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
+  const csv = ['Date,Job,Phone,Address,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
+    .concat(rows.map(r => [r.date, r.title, r.phone, r.address, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
       r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : '',
       r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(','))).join('\n');
   const a = document.createElement('a');
