@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assests/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
+<img src="assets/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
 
 <br>
 
-![Version](https://img.shields.io/badge/version-1.8-e31e24?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.9-e31e24?style=for-the-badge)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
 ![Hosted on](https://img.shields.io/badge/hosted%20on-GitHub%20Pages-0a0a0a?style=for-the-badge&logo=github)
 ![Single file](https://img.shields.io/badge/app-one%20index.html-1e9e57?style=for-the-badge)
@@ -26,6 +26,7 @@ No build step, no server. It is one `index.html` talking to Firebase.
 | Post jobs (title, phone, **address required**) | ✅ | |
 | See today's jobs with tap-to-call and tap-to-navigate address | ✅ | ✅ |
 | Report work done and who attended | | ✅ |
+| Flag a job as **cannot access workplace** (roadblock, locked gate…) with the reason | edit / clear | ✅ |
 | Edit / delete jobs, change status | ✅ | |
 | Mark jobs as invoiced (invoice number) | ✅ | |
 | Enter daily **start km / end km** | ✅ | ✅ |
@@ -39,7 +40,7 @@ No build step, no server. It is one `index.html` talking to Firebase.
 ## 🔄 The workflow
 
 <div align="center">
-  <img src="assests/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
+  <img src="assets/workflow.svg" alt="Workflow: post the job, go on site, report the work, invoice it, month-end CSV" width="100%">
 </div>
 
 ### Day to day
@@ -55,10 +56,16 @@ sequenceDiagram
     S-->>W: Job appears on the selected date
     W->>S: Save start km (morning)
     W->>W: Drive to the address (Maps link)
-    W->>S: Report work done + who attended
+    alt Site reachable
+        W->>S: Report work done + who attended
+        S-->>A: Job turns green
+        A->>S: Mark invoiced (invoice number)
+    else Cannot access (roadblock, locked gate...)
+        W->>S: Tick "Cannot access workplace" and describe the problem
+        S-->>A: Job flagged red with the reason (stays pending)
+    end
     W->>S: Save end km (evening)
-    S-->>A: Job turns green, km added to monthly total
-    A->>S: Mark invoiced (invoice number)
+    S-->>A: Km added to the monthly total
 ```
 
 ### Month end
@@ -74,6 +81,17 @@ flowchart LR
     E --> G
     F --> G
 ```
+
+---
+
+## ⛔ Cannot access the workplace
+
+Roadblock? Locked gate? Nobody home? On the job's **report** screen the worker ticks **Cannot access workplace**. A box opens for **what happened**, and the "what was done" box is replaced.
+
+- The job stays **pending**, so it never counts as completed or ready to invoice.
+- It gets a red **⛔ Cannot access** badge with the reason, who reported it and when.
+- **Admin** sees these jobs at the top of the list, and the daily summary counts them.
+- When the site becomes reachable, the worker opens the job again (**Update report**), unticks the box and reports the work as usual.
 
 ---
 
@@ -110,7 +128,7 @@ Admins see every worker's entries, a per-worker total, and the combined total. T
 ├── firestore.rules   # database security rules (keep in sync with Firebase)
 ├── CHANGELOG.md      # what changed in each version
 ├── README.md         # you are here
-└── assests/
+└── assets/
     ├── banner.svg    # animated header
     └── workflow.svg  # animated workflow
 ```
@@ -184,6 +202,8 @@ match /mileage/{id} {
 | `date` | `YYYY-MM-DD` the job is posted for |
 | `title`, `phone`, `address`, `notes` | job details (address is required) |
 | `status` | `pending` or `done` |
+| `accessIssue`, `accessNote` | `true` when the worker could not reach the site, and what they reported |
+| `accessReportedByName`, `accessReportedAt` | who flagged it and when |
 | `workDone`, `attendedBy` | the worker's report |
 | `completedAt`, `completedBy`, `completedByName` | who finished it and when |
 | `invoiced`, `invoiceNo`, `invoicedAt`, `invoicedBy` | invoice tracking |
@@ -205,10 +225,10 @@ match /mileage/{id} {
 
 ## 🏷️ Versioning and releases
 
-Versions follow a simple pattern: **1.8 → 1.9** for new features, **1.8.1** for small fixes, **2.0** for big changes. The current version is set in one place:
+Each feature release bumps the version (1.8 → 1.9 → 2.0 …) and a small fix adds a third digit (**1.9.1**). The current version is set in one place:
 
 ```js
-const APP_VERSION = '1.8';   // inside index.html
+const APP_VERSION = '1.9';   // inside index.html
 ```
 
 It shows on the login screen and in the footer.
@@ -236,8 +256,8 @@ python -m http.server 8000
 **Tag a release:**
 
 ```bash
-git tag -a v1.8 -m "Version 1.8"
-git push origin v1.8
+git tag -a v1.9 -m "Version 1.9"
+git push origin v1.9
 ```
 
 **Roll back a bad release:**
@@ -258,6 +278,7 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 | "Missing or insufficient permissions" on mileage | `mileage` rules not published, or the rule uses a variable name (like `$(database)`) that doesn't match your `match /databases/{...}` line |
 | Login fails on the live site | `<username>.github.io` missing from Firebase authorized domains |
 | Old version still showing | Wait a minute, then hard refresh with **Ctrl + Shift + R** |
+| Worker can't save a "cannot access" report | Rules from 1.9 not published yet (workers need permission to update the access fields) |
 | Old job asks for an address when editing | Expected. Jobs posted before 1.8 have no address yet |
 
 ---
@@ -267,6 +288,6 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 © Pentech Technologies. All rights reserved.
 Designed and Developed by Sankha Mudhitha
 
-<sub>Service Manager · v1.8</sub>
+<sub>Service Manager · v1.9</sub>
 
 </div>
