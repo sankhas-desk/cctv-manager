@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Service Manager | Version 1.8 -->
+<!-- Service Manager | Version 1.9 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -155,6 +155,7 @@
   }
   .task.pending::before{background:var(--orange)}
   .task.done::before{background:var(--green)}
+  .task.blocked::before{background:var(--red)}
   .task.done{background:#fcfefd}
   .task b{font-size:16px;font-weight:600}
   .badges{display:flex;gap:6px;flex-wrap:wrap}
@@ -166,6 +167,9 @@
   .badge.done{background:var(--green);color:#fff}
   .badge.inv{background:var(--black);color:#fff}
   .badge.noinv{background:var(--red-soft);color:var(--red)}
+  .badge.noaccess{background:var(--red);color:#fff}
+  .access-note{background:var(--red-soft);border:1px solid #f3c3c5;border-radius:10px;padding:10px 12px;margin-top:8px;font-size:14px;color:#7a1014}
+  .access-note .meta{color:#9a4a4d;margin-top:4px}
   .task .row:last-child{margin-top:12px}
 
   /* ---------- Modal ---------- */
@@ -185,6 +189,8 @@
   }
   .checks label:hover{background:#fafafa}
   .checks input{width:18px;height:18px;margin:0 10px 0 0;accent-color:var(--green)}
+  .access-toggle label{background:var(--red-soft);border-color:#f3c3c5;color:#7a1014;font-weight:600}
+  .access-toggle input{accent-color:var(--red)}
 
   /* ---------- Vehicle mileage ---------- */
   .milerow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -352,8 +358,17 @@
 
     <!-- worker report fields -->
     <div id="workFields">
-      <label><b>What was done?</b></label>
-      <textarea id="mWork" rows="4" placeholder="Describe the work you did..."></textarea>
+      <div class="checks access-toggle">
+        <label><input type="checkbox" id="mNoAccess">Cannot access workplace</label>
+      </div>
+      <div id="accessBox" class="hidden">
+        <label><b>What happened?</b></label>
+        <textarea id="mAccessNote" rows="3" placeholder="e.g. Road blocked, gate locked, owner not available..."></textarea>
+      </div>
+      <div id="doneBox">
+        <label><b>What was done?</b></label>
+        <textarea id="mWork" rows="4" placeholder="Describe the work you did..."></textarea>
+      </div>
       <label><b>Who attended?</b></label>
       <div id="mChecks" class="checks"></div>
     </div>
@@ -399,7 +414,7 @@ const firebaseConfig = {
   };
 /* ============================================= */
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 document.querySelectorAll('.appVer').forEach(e => e.textContent = APP_VERSION);
 
 const app  = initializeApp(firebaseConfig);
@@ -454,6 +469,7 @@ function show(view) {
    Worker order: pending → done                                   */
 const rank = t => {
   if (isAdmin) {
+    if (t.status !== 'done' && t.accessIssue) return -1;
     if (t.status === 'done' && !t.invoiced) return 0;
     if (t.status !== 'done') return 1;
     return 2;
@@ -485,8 +501,10 @@ function renderProgress() {
   card.classList.add(level);
   $('pctText').textContent = Math.round(pct) + '%';
   $('barFill').style.width = pct + '%';
+  const blocked = tasks.filter(t => t.status !== 'done' && t.accessIssue).length;
   $('summary').textContent = `${done} of ${total} jobs completed` +
-    (done < total ? ` • ${total - done} pending` : ' • All done 🎉');
+    (done < total ? ` • ${total - done} pending` : ' • All done 🎉') +
+    (blocked ? ` • ⛔ ${blocked} cannot access` : '');
 }
 
 function renderTasks() {
@@ -494,13 +512,15 @@ function renderTasks() {
   if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs posted for this date.</div>'; return; }
   $('taskList').innerHTML = tasks.map(t => {
     const isDone = t.status === 'done';
+    const blocked = !isDone && t.accessIssue;
     const tel = String(t.phone || '').replace(/[^\d+]/g, '');
     return `
-    <div class="card task ${t.status}">
+    <div class="card task ${t.status}${blocked ? ' blocked' : ''}">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
         <b>${esc(t.title)}</b>
         <div class="badges">
           <span class="badge ${t.status}">${isDone ? '✔ Done' : 'Pending'}</span>
+          ${blocked ? '<span class="badge noaccess">⛔ Cannot access</span>' : ''}
           ${isAdmin && isDone ? (t.invoiced
               ? '<span class="badge inv">Invoiced</span>'
               : '<span class="badge noinv">Not invoiced</span>') : ''}
@@ -509,6 +529,9 @@ function renderTasks() {
       ${t.phone ? `<div class="meta">Phone: <a href="tel:${esc(tel)}">${esc(t.phone)}</a></div>` : ''}
       ${t.address ? `<div class="meta">📍 Address: <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}" target="_blank" rel="noopener">${esc(t.address)}</a></div>` : ''}
       ${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
+      ${blocked ? `<div class="access-note"><b style="font-size:14px">⛔ Cannot access workplace</b><br>${esc(t.accessNote).replace(/\n/g,'<br>')}
+        <div class="meta">Reported by ${esc(t.accessReportedByName)}${t.accessReportedAt ? ' • ' + t.accessReportedAt.toDate().toLocaleString() : ''}</div></div>` : ''}
+      ${isDone && t.accessNote ? `<div class="meta">Earlier access issue: ${esc(t.accessNote)}</div>` : ''}
       ${isDone ? `
         <div style="margin-top:8px"><b style="font-size:14px">Work done:</b> ${esc(t.workDone).replace(/\n/g,'<br>')}</div>
         <div class="meta">Attended: ${esc((t.attendedBy || []).join(', '))}<br>
@@ -516,7 +539,7 @@ function renderTasks() {
       ${isAdmin && isDone && t.invoiced ? `
         <div class="meta"><b style="color:var(--ink)">Invoice no:</b> ${esc(t.invoiceNo)}${t.invoicedAt ? ' • ' + t.invoicedAt.toDate().toLocaleString() : ''}</div>` : ''}
       <div class="row">
-        ${t.status === 'pending' ? `<button class="green" data-act="done" data-id="${t.id}">Mark done / report</button>` : ''}
+        ${t.status === 'pending' ? `<button class="green" data-act="done" data-id="${t.id}">${blocked ? 'Update report' : 'Mark done / report'}</button>` : ''}
         ${isAdmin && isDone ? `<button class="${t.invoiced ? 'grey' : 'primary'}" data-act="invoice" data-id="${t.id}">${t.invoiced ? 'Edit invoice' : 'Mark invoiced'}</button>` : ''}
         ${isAdmin ? `<button class="grey" data-act="edit" data-id="${t.id}">Edit</button>
                      <button class="red" data-act="del" data-id="${t.id}">Delete</button>` : ''}
@@ -689,6 +712,7 @@ function openModal(t, mode) {
   $('mJob').value = t.title; $('mPhone').value = t.phone || ''; $('mAddress').value = t.address || ''; $('mNotes').value = t.notes || '';
   $('mWork').value = t.workDone || ''; $('mStatus').value = t.status;
   $('mInvNo').value = t.invoiceNo || '';
+  $('mNoAccess').checked = !!t.accessIssue; $('mAccessNote').value = t.accessNote || ''; syncAccess();
   const attended = t.attendedBy || [];
   $('mChecks').innerHTML = staff.filter(s => s.active).map(s =>
     `<label><input type="checkbox" value="${esc(s.name)}" ${attended.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>`).join('');
@@ -696,6 +720,22 @@ function openModal(t, mode) {
   if (inv) setTimeout(() => $('mInvNo').focus(), 50);
 }
 $('mCancel').onclick = () => $('modal').classList.add('hidden');
+
+/* "Cannot access workplace": swaps the work-done box for a problem description */
+function syncAccess() {
+  const on = $('mNoAccess').checked;
+  $('accessBox').classList.toggle('hidden', !on);
+  $('doneBox').classList.toggle('hidden', on);
+}
+$('mNoAccess').onchange = () => { syncAccess(); if ($('mNoAccess').checked) setTimeout(() => $('mAccessNote').focus(), 50); };
+
+/* fields written when a job is flagged / un-flagged as "cannot access" */
+function accessFields(t, flagged, note) {
+  if (!flagged) return { accessIssue: false };
+  const f = { accessIssue: true, accessNote: note };
+  if (!t.accessIssue) { f.accessReportedByName = me.name; f.accessReportedAt = serverTimestamp(); }  // keep the original reporter on later edits
+  return f;
+}
 
 $('mRemoveInv').onclick = async () => {
   if (!confirm('Remove the invoice mark from this job?')) return;
@@ -727,20 +767,34 @@ $('mSave').onclick = async () => {
         attendedBy: [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value),
         status
       };
+      const noAccess = $('mNoAccess').checked, accNote = $('mAccessNote').value.trim();
+      if (noAccess && !accNote) return $('mErr').textContent = 'Describe the access problem, or untick "Cannot access workplace".';
+      if (noAccess && status === 'done') return $('mErr').textContent = 'A job with an access problem cannot be marked Done. Untick the box or set the status to Pending.';
+      Object.assign(data, accessFields(t, noAccess, accNote));
       if (status === 'done' && t.status !== 'done') {
         data.completedAt = serverTimestamp(); data.completedBy = me.uid; data.completedByName = me.name;
       }
       if (status === 'pending') { data.invoiced = false; data.invoiceNo = ''; data.invoicedAt = null; }
       await updateDoc(doc(db, 'tasks', editingId), data);
     } else {
-      const work = $('mWork').value.trim();
+      const t = tasks.find(x => x.id === editingId);
       const attended = [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value);
-      if (!work) return $('mErr').textContent = 'Please describe what was done.';
-      if (!attended.length) return $('mErr').textContent = 'Select who attended.';
-      await updateDoc(doc(db, 'tasks', editingId), {
-        status: 'done', workDone: work, attendedBy: attended,
-        completedAt: serverTimestamp(), completedBy: me.uid, completedByName: me.name
-      });
+      if ($('mNoAccess').checked) {
+        // cannot access the workplace: job stays pending, the problem is recorded
+        const note = $('mAccessNote').value.trim();
+        if (!note) return $('mErr').textContent = 'Please describe the problem you faced.';
+        if (!attended.length) return $('mErr').textContent = 'Select who attended.';
+        await updateDoc(doc(db, 'tasks', editingId), { attendedBy: attended, ...accessFields(t, true, note) });
+      } else {
+        const work = $('mWork').value.trim();
+        if (!work) return $('mErr').textContent = 'Please describe what was done.';
+        if (!attended.length) return $('mErr').textContent = 'Select who attended.';
+        await updateDoc(doc(db, 'tasks', editingId), {
+          status: 'done', workDone: work, attendedBy: attended,
+          completedAt: serverTimestamp(), completedBy: me.uid, completedByName: me.name,
+          ...accessFields(t, false)
+        });
+      }
     }
     $('modal').classList.add('hidden');
   } catch (e) { $('mErr').textContent = 'Save failed: ' + e.message; }
@@ -782,8 +836,8 @@ $('exportBtn').onclick = async () => {
   const s = await getDocs(query(collection(db, 'tasks'), where('date', '>=', from), where('date', '<=', to)));
   const rows = s.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date));
   const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = ['Date,Job,Phone,Address,Notes,Status,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
-    .concat(rows.map(r => [r.date, r.title, r.phone, r.address, r.notes, r.status, r.workDone, (r.attendedBy || []).join('; '),
+  const lines = ['Date,Job,Phone,Address,Notes,Status,Cannot Access,Access Issue,Access Reported By,Work Done,Attended By,Submitted By,Completed At,Invoiced,Invoice No']
+    .concat(rows.map(r => [r.date, r.title, r.phone, r.address, r.notes, r.status, r.accessIssue ? 'Yes' : 'No', r.accessNote, r.accessReportedByName, r.workDone, (r.attendedBy || []).join('; '),
       r.completedByName, r.completedAt ? r.completedAt.toDate().toLocaleString() : '',
       r.invoiced ? 'Yes' : 'No', r.invoiceNo].map(q).join(',')));
 
