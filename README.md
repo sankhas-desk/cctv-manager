@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
+<img src="assets/banner.svg" alt="Pentech CCTV Service Manager - jobs, reports, invoices and vehicle mileage" width="100%">
 
 <br>
 
-![Version](https://img.shields.io/badge/version-2.0-e31e24?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.1-e31e24?style=for-the-badge)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
 ![Hosted on](https://img.shields.io/badge/hosted%20on-GitHub%20Pages-0a0a0a?style=for-the-badge&logo=github)
 ![Single file](https://img.shields.io/badge/app-one%20index.html-1e9e57?style=for-the-badge)
@@ -17,7 +17,7 @@
 
 ## ✨ What is it?
 
-Service Manager is a lightweight web app for a field-service team. The **admin** posts jobs for each day, **workers** report the work they did from their phones, and everything ends up in a clean month-end report, including how many kilometres the company vehicle ran.
+Pentech CCTV Service Manager is a lightweight web app for a field-service team. The **admin** posts jobs for each day, **workers** report the work they did from their phones, and everything ends up in a clean month-end report, including how many kilometres the company vehicle ran.
 
 No build step, no server. It is one `index.html` talking to Firebase.
 
@@ -26,6 +26,7 @@ No build step, no server. It is one `index.html` talking to Firebase.
 | Post jobs (title, phone, **address required**) | ✅ | |
 | See today's jobs with tap-to-call and tap-to-navigate address | ✅ | ✅ |
 | Report work done and who attended | | ✅ |
+| Unfinished jobs **carry over** to the next day and stay on top until done | ✅ | ✅ |
 | Flag a job as **cannot access workplace** (roadblock, locked gate…) with the reason | edit / clear | ✅ |
 | Edit / delete jobs, change status | ✅ | |
 | Mark jobs as invoiced (invoice number) | ✅ | |
@@ -79,6 +80,18 @@ flowchart LR
     C --> G{{Open in Excel / Sheets}}
     F --> G
 ```
+
+---
+
+## 🔁 Unfinished jobs carry over
+
+A job that is not done does not disappear at midnight.
+
+- On **today** (or any later date) the app shows the day's jobs **plus every job still pending from earlier days**, marked **↪ From <date>**.
+- Carried-over jobs are **always at the top**, oldest first, until someone completes them.
+- When a carried-over job is completed, it stays visible that day as done.
+- **Past dates** show only the jobs posted for that date, so history stays clean.
+- The job keeps its **original date**, so the CSV report still lists it under the day it was posted.
 
 ---
 
@@ -215,7 +228,7 @@ Publish rules for the `users`, `tasks` and `dailyMileage` collections. The full 
 Each feature release bumps the version (1.8 → 1.9 → 2.0 …) and a small fix adds a third digit (**1.9.1**). The current version is set in one place:
 
 ```js
-const APP_VERSION = '2.0';   // inside index.html
+const APP_VERSION = '2.1';   // inside index.html
 ```
 
 It shows on the login screen and in the footer.
@@ -243,8 +256,8 @@ python -m http.server 8000
 **Tag a release:**
 
 ```bash
-git tag -a v2.0 -m "Version 2.0"
-git push origin v2.0
+git tag -a v2.1 -m "Version 2.1"
+git push origin v2.1
 ```
 
 **Roll back a bad release:**
@@ -276,6 +289,6 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 © Pentech Technologies. All rights reserved.
 Designed and Developed by Sankha Mudhitha
 
-<sub>Service Manager · v2.0</sub>
+<sub>Pentech CCTV Service Manager · v2.1</sub>
 
 </div>
