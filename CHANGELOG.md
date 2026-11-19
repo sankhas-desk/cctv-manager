@@ -2,6 +2,17 @@
 
 All notable changes to Service Manager. Newest first.
 
+## [2.1] - 2026-11-19
+### Added
+- **Unfinished jobs carry over.** Any job that is still pending shows up again on every following day (today and future dates) with a "↪ From <date>" badge, and stays until it is done.
+- Carried-over jobs are **always at the top** of the list (oldest first) for both workers and admin.
+- A carried-over job that is completed today stays visible today as done, so it doesn't vanish when the worker submits it.
+- The daily progress summary shows how many jobs are carried over.
+- Past dates still show only the jobs posted for that date, so history stays clean. The job keeps its original date (reports and CSV still list it under the day it was posted).
+
+### Changed
+- App renamed to **Pentech CCTV Service Manager** (browser title, login heading and header).
+
 ## [2.0] - 2026-11-18
 ### Changed
 - **Vehicle mileage is now one shared record per day** (one company vehicle) instead of one per worker. There are no per-worker mileage reports, only the kilometres driven in the month.
