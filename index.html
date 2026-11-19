@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Service Manager | Version 2.0 -->
+<!-- Pentech CCTV Service Manager | Version 2.1 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -168,6 +168,7 @@
   .badge.inv{background:var(--black);color:#fff}
   .badge.noinv{background:var(--red-soft);color:var(--red)}
   .badge.noaccess{background:var(--red);color:#fff}
+  .badge.carried{background:#fff3e0;color:#b45309;border:1px solid #fcd9a8}
   .access-note{background:var(--red-soft);border:1px solid #f3c3c5;border-radius:10px;padding:10px 12px;margin-top:8px;font-size:14px;color:#7a1014}
   .access-note .meta{color:#9a4a4d;margin-top:4px}
   .task .row:last-child{margin-top:12px}
@@ -412,7 +413,7 @@ const firebaseConfig = {
   };
 /* ============================================= */
 
-const APP_VERSION = '2.0';
+const APP_VERSION = '2.1';
 document.querySelectorAll('.appVer').forEach(e => e.textContent = APP_VERSION);
 
 const app  = initializeApp(firebaseConfig);
@@ -463,9 +464,12 @@ function show(view) {
 }
 
 /* ---------- TASKS ---------- */
-/* Admin order : completed-but-not-invoiced → pending → invoiced
-   Worker order: pending → done                                   */
+/* Both:  unfinished jobs carried over from earlier days (oldest first) always on top
+   Admin: then cannot-access → completed-but-not-invoiced → pending → invoiced
+   Worker: then pending → done                                                       */
+const isOverdue = t => t.status !== 'done' && t.date < $('dateSel').value;   // carried over from an earlier day
 const rank = t => {
+  if (isOverdue(t)) return -2;            // unfinished jobs from earlier days stay on top until done
   if (isAdmin) {
     if (t.status !== 'done' && t.accessIssue) return -1;
     if (t.status === 'done' && !t.invoiced) return 0;
@@ -476,14 +480,34 @@ const rank = t => {
 };
 const stamp = t => ((t.status === 'done' ? t.completedAt : t.createdAt)?.seconds) ?? Number.MAX_SAFE_INTEGER;
 
+/* Carry-over: a job is saved once, with the date it was posted for. When you look at today (or a later
+   date) the app ALSO shows every job that is still pending from earlier days, plus carried jobs that were
+   completed on that day. Past dates show only the jobs posted for that date, so history stays clean. */
+let taskSets = { day: [], open: [], doneToday: [] };
+const dayOf = ts => ts && ts.toDate ? ts.toDate().toLocaleDateString('en-CA') : null;
+
+function mergeTasks() {
+  const D = $('dateSel').value, byId = new Map();
+  taskSets.day.forEach(t => byId.set(t.id, t));
+  taskSets.open.forEach(t => { if (t.date < D) byId.set(t.id, t); });
+  taskSets.doneToday.forEach(t => { if (t.date < D && t.status === 'done' && dayOf(t.completedAt) === D) byId.set(t.id, t); });
+  tasks = [...byId.values()].sort((a, b) =>
+    rank(a) - rank(b) || (rank(a) === -2 ? a.date.localeCompare(b.date) : 0) || stamp(a) - stamp(b));
+  renderTasks();
+}
+
 function listenTasks() {
   if (unsubTasks) unsubTasks();
-  const q = query(collection(db, 'tasks'), where('date', '==', $('dateSel').value));
-  unsubTasks = onSnapshot(q, s => {
-    tasks = s.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => rank(a) - rank(b) || stamp(a) - stamp(b));
-    renderTasks();
-  });
+  const D = $('dateSel').value;
+  taskSets = { day: [], open: [], doneToday: [] };
+  const rows = s => s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+  const fail = e => console.error('Tasks listener:', e);
+  const subs = [onSnapshot(query(collection(db, 'tasks'), where('date', '==', D)), s => { taskSets.day = rows(s); mergeTasks(); }, fail)];
+  if (D >= todayStr()) {
+    subs.push(onSnapshot(query(collection(db, 'tasks'), where('status', '==', 'pending')), s => { taskSets.open = rows(s); mergeTasks(); }, fail));
+    subs.push(onSnapshot(query(collection(db, 'tasks'), where('completedAt', '>=', new Date(D + 'T00:00:00'))), s => { taskSets.doneToday = rows(s); mergeTasks(); }, fail));
+  }
+  unsubTasks = () => subs.forEach(u => u());
 }
 $('dateSel').onchange = () => { listenTasks(); listenMileage(); };
 $('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); listenMileage(); };
@@ -500,17 +524,20 @@ function renderProgress() {
   $('pctText').textContent = Math.round(pct) + '%';
   $('barFill').style.width = pct + '%';
   const blocked = tasks.filter(t => t.status !== 'done' && t.accessIssue).length;
+  const carried = tasks.filter(isOverdue).length;
   $('summary').textContent = `${done} of ${total} jobs completed` +
     (done < total ? ` • ${total - done} pending` : ' • All done 🎉') +
+    (carried ? ` • ↪ ${carried} carried over` : '') +
     (blocked ? ` • ⛔ ${blocked} cannot access` : '');
 }
 
 function renderTasks() {
   renderProgress();
-  if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs posted for this date.</div>'; return; }
+  if (!tasks.length) { $('taskList').innerHTML = '<div class="card meta">No jobs for this date.</div>'; return; }
   $('taskList').innerHTML = tasks.map(t => {
     const isDone = t.status === 'done';
     const blocked = !isDone && t.accessIssue;
+    const carried = t.date < $('dateSel').value;
     const tel = String(t.phone || '').replace(/[^\d+]/g, '');
     return `
     <div class="card task ${t.status}${blocked ? ' blocked' : ''}">
@@ -518,6 +545,7 @@ function renderTasks() {
         <b>${esc(t.title)}</b>
         <div class="badges">
           <span class="badge ${t.status}">${isDone ? '✔ Done' : 'Pending'}</span>
+          ${carried ? `<span class="badge carried">↪ From ${esc(t.date)}</span>` : ''}
           ${blocked ? '<span class="badge noaccess">⛔ Cannot access</span>' : ''}
           ${isAdmin && isDone ? (t.invoiced
               ? '<span class="badge inv">Invoiced</span>'
