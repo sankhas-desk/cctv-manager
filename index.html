@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0a0a0a">
-<title>Service Manager</title>
+<title>Pentech CCTV Service Manager</title>
 <link rel="icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -231,7 +231,7 @@
 <main id="loginView" class="hidden">
   <div class="login-box">
     <img src="logo.png" alt="Logo">
-    <h2>Service Manager</h2>
+    <h2>Pentech CCTV Service Manager</h2>
     <p class="sub">Sign in to continue</p>
     <div class="card">
       <label>Email</label>
@@ -250,7 +250,7 @@
   <header>
     <div class="brand">
       <img src="logo.png" alt="Logo">
-      <div><b>Service Manager</b><small id="who"></small></div>
+      <div><b>Pentech CCTV Service Manager</b><small id="who"></small></div>
     </div>
     <button class="grey" id="logoutBtn">Logout</button>
   </header>
@@ -872,7 +872,7 @@ $('exportBtn').onclick = async () => {
   km.forEach(m => { perMonth[m.month] = (perMonth[m.month] || 0) + (Number(m.km) || 0); grand += Number(m.km) || 0; });
   Object.keys(perMonth).sort().forEach(mo => lines.push(['Month total', mo, '', Math.round(perMonth[mo] * 10) / 10].map(q).join(',')));
   if (Object.keys(perMonth).length > 1) lines.push(['Total (whole period)', '', '', Math.round(grand * 10) / 10].map(q).join(','));
-  lines.push('', q('Service Manager v' + APP_VERSION));
+  lines.push('', q('Pentech CCTV Service Manager v' + APP_VERSION));
   const csv = lines.join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
