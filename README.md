@@ -4,7 +4,7 @@
 
 <br>
 
-![Version](https://img.shields.io/badge/version-2.1-e31e24?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.2-e31e24?style=for-the-badge)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-ffca28?style=for-the-badge&logo=firebase&logoColor=black)
 ![Hosted on](https://img.shields.io/badge/hosted%20on-GitHub%20Pages-0a0a0a?style=for-the-badge&logo=github)
 ![Single file](https://img.shields.io/badge/app-one%20index.html-1e9e57?style=for-the-badge)
@@ -23,12 +23,16 @@ No build step, no server. It is one `index.html` talking to Firebase.
 
 | | Admin | Worker |
 |---|:---:|:---:|
-| Post jobs (title, phone, **address required**) | ✅ | |
+| Post jobs (title, phone, **address required**) with a "job successfully created" confirmation | ✅ | |
+| **Assign workers** to a job (when posting or editing) | ✅ | see who is assigned |
 | See today's jobs with tap-to-call and tap-to-navigate address | ✅ | ✅ |
 | Report work done and who attended | | ✅ |
 | Unfinished jobs **carry over** to the next day and stay on top until done | ✅ | ✅ |
 | Flag a job as **cannot access workplace** (roadblock, locked gate…) with the reason | edit / clear | ✅ |
 | Edit / delete jobs, change status | ✅ | |
+| **Reschedule** a job (including "cannot access" jobs) to a new date | ✅ | |
+| **Calendar**: pick a day to see the jobs posted and completed | ✅ | ✅ |
+| **Non invoiced jobs** list (completed, no invoice yet) | ✅ | |
 | Mark jobs as invoiced (invoice number) | ✅ | |
 | Enter the vehicle's **start km** (morning) / **end km** (evening), **today only** | correct any day | ✅ |
 | See kilometres driven this month | ✅ | ✅ |
@@ -64,6 +68,7 @@ sequenceDiagram
     else Cannot access (roadblock, locked gate...)
         W->>S: Tick "Cannot access workplace" and describe the problem
         S-->>A: Job flagged red with the reason (stays pending)
+        A->>S: Reschedule the job to a new date
     end
     W->>S: Save vehicle end km (evening, any worker)
     S-->>A: Km added to the monthly total
@@ -103,6 +108,39 @@ Roadblock? Locked gate? Nobody home? On the job's **report** screen the worker t
 - It gets a red **⛔ Cannot access** badge with the reason, who reported it and when.
 - **Admin** sees these jobs at the top of the list, and the daily summary counts them.
 - When the site becomes reachable, the worker opens the job again (**Update report**), unticks the box and reports the work as usual.
+
+---
+
+## 📅 Rescheduling jobs
+
+When a job cannot be done on its day (a **Cannot access** report, a customer request, bad weather), the admin taps **📅 Reschedule** on the job.
+
+- Choose the **new date** and, if you like, add a reason.
+- The job moves to that date, stays **pending**, and the "cannot access" flag is cleared so the worker can report it again.
+- The card shows **📅 Rescheduled from <date>** with who did it and why.
+- The button is highlighted on cannot-access jobs and also available on any other pending job.
+
+---
+
+## 🗓️ Calendar
+
+Beside the job list on wide screens, and a collapsible **📅 Calendar** panel at the top on phones. Available to admin and workers.
+
+- Dots on each day: **orange** pending, **red** cannot access, **green** completed that day.
+- Tap a day to open it in the main list. The panel under the calendar lists the jobs **posted** that day and the jobs **completed** that day (including jobs carried over from earlier days).
+- Use ‹ and › to move between months.
+
+---
+
+## 👷 Assigning workers
+
+The admin can tick the team members for each job when **posting** it, or later from **Edit**. Assigned names show on the job card and in the calendar. Workers see an **Assigned to you** badge, and their report form starts with the assigned workers ticked under *Who attended* (they can change it).
+
+---
+
+## 🧾 Non invoiced jobs
+
+An admin-only section, next to *Add jobs* and *Team members*, listing every **completed job that has no invoice yet**, across all dates, oldest first, with how many days it has been waiting. Tap **Mark invoiced**, enter the invoice number, and the job leaves the list straight away. If you later remove an invoice mark, the job comes back.
 
 ---
 
@@ -202,6 +240,8 @@ Publish rules for the `users`, `tasks` and `dailyMileage` collections. The full 
 |---|---|
 | `date` | `YYYY-MM-DD` the job is posted for |
 | `title`, `phone`, `address`, `notes` | job details (address is required) |
+| `assignedTo` | list of worker names the admin assigned |
+| `rescheduledFrom`, `rescheduledAt`, `rescheduledByName`, `rescheduleNote` | set when the admin reschedules a job |
 | `status` | `pending` or `done` |
 | `accessIssue`, `accessNote` | `true` when the worker could not reach the site, and what they reported |
 | `accessReportedByName`, `accessReportedAt` | who flagged it and when |
@@ -228,7 +268,7 @@ Publish rules for the `users`, `tasks` and `dailyMileage` collections. The full 
 Each feature release bumps the version (1.8 → 1.9 → 2.0 …) and a small fix adds a third digit (**1.9.1**). The current version is set in one place:
 
 ```js
-const APP_VERSION = '2.1';   // inside index.html
+const APP_VERSION = '2.2';   // inside index.html
 ```
 
 It shows on the login screen and in the footer.
@@ -256,8 +296,8 @@ python -m http.server 8000
 **Tag a release:**
 
 ```bash
-git tag -a v2.1 -m "Version 2.1"
-git push origin v2.1
+git tag -a v2.2 -m "Version 2.2"
+git push origin v2.2
 ```
 
 **Roll back a bad release:**
@@ -289,6 +329,6 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full history.
 © Pentech Technologies. All rights reserved.
 Designed and Developed by Sankha Mudhitha
 
-<sub>Pentech CCTV Service Manager · v2.1</sub>
+<sub>Pentech CCTV Service Manager · v2.2</sub>
 
 </div>
