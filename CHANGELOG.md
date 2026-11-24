@@ -2,6 +2,20 @@
 
 All notable changes to Service Manager. Newest first.
 
+## [2.2] - 2026-11-23
+### Added
+- **"Job successfully created" message.** A green confirmation appears at the top of the screen every time the admin posts jobs (it also confirms invoices and reschedules).
+- **Admin can reschedule jobs.** A new **📅 Reschedule** button on pending jobs, highlighted on "Cannot access" jobs, opens a box for the new date and an optional reason. The job moves to the new date, the "cannot access" flag is cleared, and the card shows a "📅 Rescheduled from <date>" note.
+- **Calendar for admin and workers.** Shown beside the job list on wide screens and as a collapsible panel at the top on phones. Dots mark days with pending (orange), cannot-access (red) and completed (green) jobs. Tapping a day opens it in the main list and lists what was **posted** and what was **completed** that day.
+- **Admin can assign workers to a job**, when posting (per job) or when editing. Assigned names show on the job card and in the calendar. Workers see an "Assigned to you" badge, and the report form starts with the assigned workers ticked under "Who attended".
+- **Non invoiced jobs section (admin).** Lists every completed job without an invoice, across all dates, oldest first, with how long it has been waiting. **Mark invoiced** opens the invoice box, and the job disappears from the section as soon as it is saved.
+
+### Changed
+- The page layout is now two columns on wide screens (jobs on the left, calendar on the right).
+
+### Requires
+- No new collections. Admin accounts must be allowed to write the new job fields `assignedTo`, `rescheduledFrom`, `rescheduledAt`, `rescheduledByName` and `rescheduleNote` on `tasks`. Admins can normally update any field already, so check `firestore.rules` and publish only if it limits the fields.
+
 ## [2.1] - 2026-11-19
 ### Added
 - **Unfinished jobs carry over.** Any job that is still pending shows up again on every following day (today and future dates) with a "↪ From <date>" badge, and stays until it is done.
