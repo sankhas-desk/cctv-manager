@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Pentech CCTV Service Manager | Version 2.1 -->
+<!-- Pentech CCTV Service Manager | Version 2.2 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -225,6 +225,66 @@
     header{padding:10px 14px}
   }
 
+  /* ---------- Layout with calendar side panel ---------- */
+  .layout{max-width:1200px;margin:0 auto;padding:20px 16px 40px;display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+  .layout main{max-width:none;margin:0;padding:0}
+  @media (min-width:1000px){
+    .layout{grid-template-columns:minmax(0,1fr) 340px}
+    .layout main{grid-column:1;grid-row:1}
+    .layout aside{grid-column:2;grid-row:1;position:sticky;top:84px}
+  }
+  @media (max-width:520px){.layout{padding:14px 12px 30px}}
+
+  /* ---------- Calendar ---------- */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+  .cal-head b{font-size:15px}
+  .cal-head button{padding:5px 13px;font-size:16px;line-height:1.2}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .cal-dow{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding:2px 0}
+  .cal-day{
+    background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:6px 0 5px;font-size:13px;font-weight:500;min-height:44px;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .cal-day:hover{background:#f0f0f1;border-color:#d5d5d8}
+  .cal-day.today{border-color:var(--red);color:var(--red);font-weight:700}
+  .cal-day.sel,.cal-day.sel:hover{background:var(--black);border-color:var(--black);color:#fff}
+  .dots{display:flex;gap:3px;height:6px}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%}
+  .dot.o{background:var(--orange)}
+  .dot.g{background:var(--green)}
+  .dot.r{background:var(--red)}
+  .cal-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0 0}
+  .cal-legend span{display:inline-flex;align-items:center;gap:5px}
+  .cal-detail h4{margin:14px 0 4px;font-size:13.5px}
+  .cal-item{padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .cal-item .row{justify-content:space-between;align-items:flex-start;flex-wrap:nowrap}
+  .cal-item .meta{margin-top:2px;font-size:12.5px}
+  .cal-item:last-child{border-bottom:0}
+
+  /* ---------- Assign workers, reschedule, non invoiced ---------- */
+  .jw{grid-column:1 / -1;margin-top:2px}
+  .jw label{display:block}
+  .jw .checks{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+  .jw .checks label{margin:0;padding:6px 10px;font-size:13.5px}
+  .jw .checks input{width:16px;height:16px;margin:0 8px 0 0}
+  @media (max-width:520px){.jobrow .jw{grid-column:1;grid-row:4}}
+  .badge.resch{background:#e8f0fe;color:#1a56c4}
+  .badge.mine{background:var(--green-soft);color:var(--green-dark)}
+  .ni-item{border:1px solid var(--line);border-left:4px solid var(--red);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .ni-item .row:last-child{margin-top:10px}
+  .ni-item b{font-weight:600}
+  #niCount{margin-left:8px;vertical-align:1px}
+
+  /* ---------- Toast ---------- */
+  #toast{
+    position:fixed;left:50%;top:84px;transform:translate(-50%,-14px);
+    background:var(--green);color:#fff;padding:12px 20px;border-radius:12px;font-weight:600;font-size:14.5px;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;
+    transition:opacity .25s,transform .25s;z-index:30;max-width:90vw;text-align:center;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
   /* ---------- Christmas snow ---------- */
   #snow{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9}
 </style>
@@ -258,6 +318,25 @@
     </div>
     <button class="grey" id="logoutBtn">Logout</button>
   </header>
+  <div class="layout">
+  <!-- CALENDAR (side panel on wide screens, collapsible on phones) -->
+  <aside>
+    <div class="card" style="margin-bottom:0">
+      <details id="calDetails">
+        <summary>📅 Calendar</summary>
+        <div class="cal-head">
+          <button class="grey" id="calPrev" type="button" aria-label="Previous month">‹</button>
+          <b id="calTitle"></b>
+          <button class="grey" id="calNext" type="button" aria-label="Next month">›</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-legend">
+          <span><i class="dot o"></i>Pending</span><span><i class="dot r"></i>Cannot access</span><span><i class="dot g"></i>Done</span>
+        </div>
+        <div id="calDetail" class="cal-detail"></div>
+      </details>
+    </div>
+  </aside>
   <main>
     <div class="card datebar">
       <label><b>Date</b></label>
@@ -285,6 +364,13 @@
             <button class="grey" id="addRowBtn" type="button">+ Add another job</button>
             <button id="addTasksBtn" class="primary">Post jobs to selected date</button>
           </div>
+        </details>
+      </div>
+      <div class="card" id="niCard">
+        <details>
+          <summary><span>Non invoiced jobs <span class="badge noinv" id="niCount">0</span></span></summary>
+          <div class="meta" style="margin:0 0 10px">Completed jobs still waiting for an invoice. A job leaves this list as soon as it is marked invoiced.</div>
+          <div id="niList"></div>
         </details>
       </div>
       <div class="card">
@@ -336,6 +422,7 @@
       </details>
     </div>
   </main>
+  </div>
 </div>
 
 <!-- FOOTER -->
@@ -344,6 +431,8 @@
   <div>Designed and Developed by Sankha Mudhitha</div>
   <div class="ver">Version <span class="appVer"></span></div>
 </footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <!-- MODAL -->
 <div id="modal" class="modal hidden">
@@ -356,6 +445,8 @@
       <label>Phone number</label><input id="mPhone" type="tel" inputmode="tel">
       <label>Job address <span style="color:var(--red)">*</span></label><input id="mAddress" placeholder="Address of the job site">
       <label>Notes (optional)</label><textarea id="mNotes" rows="2"></textarea>
+      <label><b>Assign workers</b></label>
+      <div id="mAssign" class="checks"></div>
     </div>
 
     <!-- worker report fields -->
@@ -379,6 +470,16 @@
     <div id="invoiceFields" class="hidden">
       <label><b>Invoice number</b></label>
       <input id="mInvNo" placeholder="e.g. INV-1042">
+    </div>
+
+    <!-- admin: reschedule -->
+    <div id="rescheduleFields" class="hidden">
+      <div id="mResInfo"></div>
+      <label><b>New date</b></label>
+      <input type="date" id="mNewDate">
+      <label>Reason or note (optional)</label>
+      <textarea id="mResNote" rows="2" placeholder="e.g. Road reopens on Thursday, owner will be home"></textarea>
+      <div class="meta" style="margin:-4px 0 10px">Rescheduling clears the "cannot access" flag. The job moves to the new date and stays pending.</div>
     </div>
 
     <div id="adminStatus" class="hidden">
@@ -416,7 +517,7 @@ const firebaseConfig = {
   };
 /* ============================================= */
 
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 document.querySelectorAll('.appVer').forEach(e => e.textContent = APP_VERSION);
 
 const app  = initializeApp(firebaseConfig);
@@ -429,6 +530,16 @@ const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
 
 let me = null, isAdmin = false, staff = [], tasks = [], unsubTasks = null, unsubUsers = null, editingId = null;
 let mileage = [], unsubMile = null, mileMonth = null;
+let unsubNonInv = null, nonInv = [];
+let calMonth = null, calPosted = [], calDone = [], unsubCal = null;
+const rowsOf = s => s.docs.map(d => ({ id: d.id, ...d.data({ serverTimestamps: 'estimate' }) }));
+
+/* small confirmation message at the top of the screen */
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
 
 /* ---------- AUTH ---------- */
 $('loginBtn').onclick = async () => {
@@ -441,6 +552,8 @@ $('logoutBtn').onclick = () => signOut(auth);
 onAuthStateChanged(auth, async user => {
   if (unsubTasks) unsubTasks(); if (unsubUsers) unsubUsers(); if (unsubMile) unsubMile();
   unsubMile = null; mileMonth = null; mileage = [];
+  if (unsubNonInv) unsubNonInv(); if (unsubCal) unsubCal();
+  unsubNonInv = null; unsubCal = null; nonInv = []; calPosted = []; calDone = [];
   if (!user) { me = null; show('loginView'); return; }
   const snap = await getDoc(doc(db, 'users', user.uid));
   if (!snap.exists() || !snap.data().active) {
@@ -452,13 +565,17 @@ onAuthStateChanged(auth, async user => {
   $('who').textContent = `${me.name} (${isAdmin ? 'Admin' : 'Worker'})`;
   $('adminPanel').classList.toggle('hidden', !isAdmin);
   $('dateSel').value = todayStr();
+  calMonth = todayStr().slice(0, 7);
   show('appView');
   unsubUsers = onSnapshot(collection(db, 'users'), s => {
     staff = s.docs.map(d => ({ id: d.id, ...d.data() }));
     renderTeam();
+    refreshRowWorkers();
   });
   listenTasks();
   listenMileage();
+  listenCal();
+  listenNonInv();
 });
 
 function show(view) {
@@ -512,8 +629,125 @@ function listenTasks() {
   }
   unsubTasks = () => subs.forEach(u => u());
 }
-$('dateSel').onchange = () => { listenTasks(); listenMileage(); };
-$('todayBtn').onclick = () => { $('dateSel').value = todayStr(); listenTasks(); listenMileage(); };
+/* one place to change the selected date (date box, Today button, calendar click) */
+function goDate(d) {
+  d = d || todayStr(); $('dateSel').value = d;
+  if (d.slice(0, 7) !== calMonth) { calMonth = d.slice(0, 7); listenCal(); }
+  listenTasks(); listenMileage(); renderCal();
+}
+$('dateSel').onchange = () => goDate($('dateSel').value);
+$('todayBtn').onclick = () => goDate(todayStr());
+
+/* ---------- CALENDAR (admin + worker) ----------
+   Dots per day: orange = posted and still pending, red = posted and cannot access, green = completed that day.
+   Click a day to open it in the main list; the panel below the grid lists what was posted and what was done. */
+$('calDetails').open = matchMedia('(min-width:1000px)').matches;
+
+function listenCal() {
+  if (!me || !calMonth) return;
+  if (unsubCal) unsubCal();
+  calPosted = []; calDone = [];
+  const m = calMonth, start = new Date(m + '-01T00:00:00');
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  const fail = e => console.error('Calendar listener:', e);
+  const subs = [
+    onSnapshot(query(collection(db, 'tasks'), where('date', '>=', m + '-01'), where('date', '<=', m + '-31')),
+      s => { calPosted = rowsOf(s); renderCal(); }, fail),
+    onSnapshot(query(collection(db, 'tasks'), where('completedAt', '>=', start), where('completedAt', '<', end)),
+      s => { calDone = rowsOf(s).filter(t => t.status === 'done'); renderCal(); }, fail)
+  ];
+  unsubCal = () => subs.forEach(u => u());
+  renderCal();
+}
+
+function renderCal() {
+  if (!me || !calMonth) return;
+  const [y, mo] = calMonth.split('-').map(Number);
+  const sel = $('dateSel').value, today = todayStr();
+  $('calTitle').textContent = monthLabel(calMonth);
+
+  const info = {};
+  const at = d => info[d] || (info[d] = { o: 0, r: 0, g: 0 });
+  calPosted.forEach(t => { if (t.status !== 'done') t.accessIssue ? at(t.date).r++ : at(t.date).o++; });
+  calDone.forEach(t => { const d = dayOf(t.completedAt); if (d) at(d).g++; });
+
+  const lead = new Date(y, mo - 1, 1).getDay(), days = new Date(y, mo, 0).getDate();
+  let h = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(x => `<div class="cal-dow">${x}</div>`).join('');
+  for (let i = 0; i < lead; i++) h += '<div></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = `${calMonth}-${String(d).padStart(2, '0')}`, c = info[ds] || {};
+    h += `<button type="button" class="cal-day${ds === today ? ' today' : ''}${ds === sel ? ' sel' : ''}" data-d="${ds}">
+      <span>${d}</span><span class="dots">${c.r ? '<i class="dot r"></i>' : ''}${c.o ? '<i class="dot o"></i>' : ''}${c.g ? '<i class="dot g"></i>' : ''}</span></button>`;
+  }
+  $('calGrid').innerHTML = h;
+
+  // what happened on the selected day
+  if (sel.slice(0, 7) !== calMonth) { $('calDetail').innerHTML = '<div class="meta">Pick a day in this month to see its jobs.</div>'; return; }
+  const created = t => t.createdAt?.seconds ?? 0;
+  const posted = calPosted.filter(t => t.date === sel).sort((a, b) => created(a) - created(b));
+  const done = calDone.filter(t => dayOf(t.completedAt) === sel).sort((a, b) => (a.completedAt?.seconds ?? 0) - (b.completedAt?.seconds ?? 0));
+  const label = new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const state = t => t.status === 'done' ? '<span class="badge done">✔ Done</span>'
+    : t.accessIssue ? '<span class="badge noaccess">⛔ Cannot access</span>' : '<span class="badge pending">Pending</span>';
+  const who = t => (t.assignedTo || []).length ? `<div class="meta">👷 ${esc(t.assignedTo.join(', '))}</div>` : '';
+  $('calDetail').innerHTML = `<div class="km-sub">${esc(label)}</div>
+    <h4>📌 Posted (${posted.length})</h4>` +
+    (posted.length ? posted.map(t => `<div class="cal-item"><div class="row"><span>${esc(t.title)}</span>${state(t)}</div>${who(t)}</div>`).join('')
+                   : '<div class="meta">No jobs posted for this day.</div>') +
+    `<h4>✅ Completed (${done.length})</h4>` +
+    (done.length ? done.map(t => `<div class="cal-item"><div class="row"><span>${esc(t.title)}</span><span class="badge done">✔ Done</span></div>
+        <div class="meta">${t.completedByName ? 'by ' + esc(t.completedByName) : ''}${t.date !== sel ? ' • posted ' + esc(t.date) : ''}</div></div>`).join('')
+                 : '<div class="meta">No jobs completed on this day.</div>');
+}
+
+$('calGrid').onclick = e => {
+  const b = e.target.closest('.cal-day'); if (!b) return;
+  goDate(b.dataset.d);
+  if (matchMedia('(max-width:999px)').matches) $('taskList').scrollIntoView({ behavior: 'smooth' });
+};
+function shiftMonth(n) {
+  const [y, m] = calMonth.split('-').map(Number), d = new Date(y, m - 1 + n, 1);
+  calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  listenCal();
+}
+$('calPrev').onclick = () => shiftMonth(-1);
+$('calNext').onclick = () => shiftMonth(1);
+
+/* ---------- ADMIN: non invoiced jobs ----------
+   Every completed job that has no invoice yet, across all dates. Marking one as invoiced removes it from here. */
+function listenNonInv() {
+  if (!isAdmin) return;
+  unsubNonInv = onSnapshot(query(collection(db, 'tasks'), where('status', '==', 'done'), where('invoiced', '==', false)), s => {
+    nonInv = rowsOf(s).sort((a, b) => (a.completedAt?.seconds ?? 9e12) - (b.completedAt?.seconds ?? 9e12));
+    renderNonInv();
+  }, e => { $('niList').innerHTML = `<div class="err">Could not load non invoiced jobs: ${esc(e.message)}</div>`; });
+}
+
+function renderNonInv() {
+  if (!isAdmin) return;
+  $('niCount').textContent = nonInv.length;
+  if (!nonInv.length) { $('niList').innerHTML = '<div class="meta">All completed jobs have been invoiced. 🎉</div>'; return; }
+  $('niList').innerHTML = nonInv.map(t => {
+    const doneAt = t.completedAt && t.completedAt.toDate ? t.completedAt.toDate() : null;
+    const waited = doneAt ? Math.floor((Date.now() - doneAt.getTime()) / 86400000) : 0;
+    const tel = String(t.phone || '').replace(/[^\d+]/g, '');
+    return `<div class="ni-item">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <b>${esc(t.title)}</b>
+        <span class="badge noinv">${waited < 1 ? 'Done today' : waited + (waited === 1 ? ' day' : ' days') + ' waiting'}</span>
+      </div>
+      <div class="meta">Posted for ${esc(t.date)}${doneAt ? ' • completed ' + doneAt.toLocaleString() : ''}${t.completedByName ? ' by ' + esc(t.completedByName) : ''}</div>
+      ${t.phone ? `<div class="meta">Phone: <a href="tel:${esc(tel)}">${esc(t.phone)}</a></div>` : ''}
+      ${t.address ? `<div class="meta">📍 ${esc(t.address)}</div>` : ''}
+      ${t.workDone ? `<div class="meta"><b style="color:var(--ink)">Work done:</b> ${esc(t.workDone).replace(/\n/g, '<br>')}</div>` : ''}
+      <div class="row"><button class="primary" data-ni="${t.id}">Mark invoiced</button></div>
+    </div>`;
+  }).join('');
+}
+$('niList').onclick = e => {
+  const b = e.target.closest('button[data-ni]'); if (!b) return;
+  const t = nonInv.find(x => x.id === b.dataset.ni); if (t) openModal(t, 'invoice');
+};
 
 function renderProgress() {
   const total = tasks.length;
@@ -550,6 +784,8 @@ function renderTasks() {
           <span class="badge ${t.status}">${isDone ? '✔ Done' : 'Pending'}</span>
           ${carried ? `<span class="badge carried">↪ From ${esc(t.date)}</span>` : ''}
           ${blocked ? '<span class="badge noaccess">⛔ Cannot access</span>' : ''}
+          ${t.rescheduledFrom && !isDone ? '<span class="badge resch">📅 Rescheduled</span>' : ''}
+          ${!isAdmin && !isDone && (t.assignedTo || []).includes(me.name) ? '<span class="badge mine">Assigned to you</span>' : ''}
           ${isAdmin && isDone ? (t.invoiced
               ? '<span class="badge inv">Invoiced</span>'
               : '<span class="badge noinv">Not invoiced</span>') : ''}
@@ -558,6 +794,8 @@ function renderTasks() {
       ${t.phone ? `<div class="meta">Phone: <a href="tel:${esc(tel)}">${esc(t.phone)}</a></div>` : ''}
       ${t.address ? `<div class="meta">📍 Address: <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}" target="_blank" rel="noopener">${esc(t.address)}</a></div>` : ''}
       ${t.notes ? `<div class="meta">${esc(t.notes)}</div>` : ''}
+      ${(t.assignedTo || []).length ? `<div class="meta">👷 Assigned: ${esc(t.assignedTo.join(', '))}</div>` : ''}
+      ${t.rescheduledFrom ? `<div class="meta">📅 Rescheduled from ${esc(t.rescheduledFrom)}${t.rescheduledByName ? ' by ' + esc(t.rescheduledByName) : ''}${t.rescheduleNote ? ' • ' + esc(t.rescheduleNote) : ''}</div>` : ''}
       ${blocked ? `<div class="access-note"><b style="font-size:14px">⛔ Cannot access workplace</b><br>${esc(t.accessNote).replace(/\n/g,'<br>')}
         <div class="meta">Reported by ${esc(t.accessReportedByName)}${t.accessReportedAt ? ' • ' + t.accessReportedAt.toDate().toLocaleString() : ''}</div></div>` : ''}
       ${isDone && t.accessNote ? `<div class="meta">Earlier access issue: ${esc(t.accessNote)}</div>` : ''}
@@ -570,6 +808,7 @@ function renderTasks() {
       <div class="row">
         ${t.status === 'pending' ? `<button class="green" data-act="done" data-id="${t.id}">${blocked ? 'Update report' : 'Mark done / report'}</button>` : ''}
         ${isAdmin && isDone ? `<button class="${t.invoiced ? 'grey' : 'primary'}" data-act="invoice" data-id="${t.id}">${t.invoiced ? 'Edit invoice' : 'Mark invoiced'}</button>` : ''}
+        ${isAdmin && !isDone ? `<button class="${blocked ? 'primary' : 'grey'}" data-act="reschedule" data-id="${t.id}">📅 Reschedule</button>` : ''}
         ${isAdmin ? `<button class="grey" data-act="edit" data-id="${t.id}">Edit</button>
                      <button class="red" data-act="del" data-id="${t.id}">Delete</button>` : ''}
       </div>
@@ -586,16 +825,29 @@ $('taskList').onclick = async e => {
 };
 
 /* ---------- ADMIN: add jobs (title + phone per row) ---------- */
+const assignHtml = (sel = []) => staff.filter(s => s.active).map(s =>
+  `<label><input type="checkbox" value="${esc(s.name)}" ${sel.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>`).join('')
+  || '<div class="meta">No team members yet.</div>';
+
+// team list loads after the rows are drawn: refill each row's worker boxes, keeping what was ticked
+function refreshRowWorkers() {
+  document.querySelectorAll('#jobRows .jobrow .jw .checks').forEach(box => {
+    const sel = [...box.querySelectorAll('input:checked')].map(i => i.value);
+    box.innerHTML = assignHtml(sel);
+  });
+}
+
 function addRow() {
   const d = document.createElement('div');
   d.className = 'jobrow';
   d.innerHTML = `<input class="jt" placeholder="Job (e.g. School CCTV service)">
                  <input class="jp" type="tel" inputmode="tel" placeholder="Phone number">
                  <button type="button" class="grey" title="Remove">✕</button>
-                 <input class="ja" placeholder="Job address (required)">`;
+                 <input class="ja" placeholder="Job address (required)">
+                 <div class="jw"><label><b>Assign workers</b> (optional)</label><div class="checks">${assignHtml()}</div></div>`;
   d.querySelector('button').onclick = () => {
     if ($('jobRows').children.length > 1) d.remove();
-    else d.querySelectorAll('input').forEach(i => i.value = '');
+    else { d.querySelectorAll('input:not([type=checkbox])').forEach(i => i.value = ''); d.querySelectorAll('.jw input').forEach(i => i.checked = false); }
   };
   $('jobRows').appendChild(d);
 }
@@ -607,7 +859,8 @@ $('addTasksBtn').onclick = async () => {
     el: r,
     title: r.querySelector('.jt').value.trim(),
     phone: r.querySelector('.jp').value.trim(),
-    address: r.querySelector('.ja').value.trim()
+    address: r.querySelector('.ja').value.trim(),
+    assigned: [...r.querySelectorAll('.jw input:checked')].map(i => i.value)
   }));
   allRows.forEach(r => r.el.querySelector('.ja').style.borderColor = '');
   const rows = allRows.filter(r => r.title);
@@ -624,7 +877,7 @@ $('addTasksBtn').onclick = async () => {
   try {
     for (const r of rows) {
       await addDoc(collection(db, 'tasks'), {
-        date, title: r.title, phone: r.phone, address: r.address, notes: '',
+        date, title: r.title, phone: r.phone, address: r.address, notes: '', assignedTo: r.assigned,
         status: 'pending', workDone: '', attendedBy: [],
         invoiced: false, invoiceNo: '',
         createdAt: serverTimestamp(), createdBy: me.uid,
@@ -632,6 +885,7 @@ $('addTasksBtn').onclick = async () => {
       });
     }
     $('jobRows').innerHTML = ''; addRow();
+    showToast(rows.length === 1 ? '✅ Job successfully created' : `✅ ${rows.length} jobs successfully created`);
   } catch (e) { alert('Could not post jobs: ' + e.message); }
   $('addTasksBtn').disabled = false;
 };
@@ -753,20 +1007,30 @@ $('kmSaveBtn').onclick = async () => {
 /* ---------- MODAL ---------- */
 function openModal(t, mode) {
   editingId = t.id;
-  const edit = mode === 'edit', inv = mode === 'invoice';
+  const edit = mode === 'edit', inv = mode === 'invoice', res = mode === 'reschedule';
   $('modal').dataset.mode = mode;
   $('mErr').textContent = '';
-  $('mTitle').textContent = inv ? 'Invoice – ' + t.title : (edit ? 'Edit job' : t.title);
+  $('mTitle').textContent = res ? 'Reschedule – ' + t.title : (inv ? 'Invoice – ' + t.title : (edit ? 'Edit job' : t.title));
   $('adminFields').classList.toggle('hidden', !edit);
   $('adminStatus').classList.toggle('hidden', !edit);
-  $('workFields').classList.toggle('hidden', inv);
+  $('workFields').classList.toggle('hidden', inv || res);
   $('invoiceFields').classList.toggle('hidden', !inv);
+  $('rescheduleFields').classList.toggle('hidden', !res);
+  $('mSave').textContent = res ? 'Reschedule job' : 'Save';
   $('mRemoveInv').classList.toggle('hidden', !(inv && t.invoiced));
   $('mJob').value = t.title; $('mPhone').value = t.phone || ''; $('mAddress').value = t.address || ''; $('mNotes').value = t.notes || '';
   $('mWork').value = t.workDone || ''; $('mStatus').value = t.status;
   $('mInvNo').value = t.invoiceNo || '';
   $('mNoAccess').checked = !!t.accessIssue; $('mAccessNote').value = t.accessNote || ''; syncAccess();
-  const attended = t.attendedBy || [];
+  $('mAssign').innerHTML = assignHtml(t.assignedTo || []);
+  if (res) {
+    const tm = new Date(); tm.setDate(tm.getDate() + 1);
+    $('mNewDate').min = todayStr(); $('mNewDate').value = tm.toLocaleDateString('en-CA'); $('mResNote').value = '';
+    $('mResInfo').innerHTML = t.accessIssue
+      ? `<div class="access-note" style="margin:0 0 12px"><b style="font-size:14px">⛔ Cannot access workplace</b><br>${esc(t.accessNote).replace(/\n/g, '<br>')}</div>` : '';
+  }
+  // report form: start from the assigned workers if nobody has been recorded as attending yet
+  const attended = (mode !== 'edit' && !(t.attendedBy || []).length) ? (t.assignedTo || []) : (t.attendedBy || []);
   $('mChecks').innerHTML = staff.filter(s => s.active).map(s =>
     `<label><input type="checkbox" value="${esc(s.name)}" ${attended.includes(s.name) ? 'checked' : ''}>${esc(s.name)}</label>`).join('');
   $('modal').classList.remove('hidden');
@@ -807,6 +1071,21 @@ $('mSave').onclick = async () => {
       await updateDoc(doc(db, 'tasks', editingId), {
         invoiced: true, invoiceNo: no, invoicedAt: serverTimestamp(), invoicedBy: me.uid
       });
+      showToast('✅ Marked as invoiced');
+    } else if (mode === 'reschedule') {
+      const t = tasks.find(x => x.id === editingId);
+      const nd = $('mNewDate').value;
+      if (!nd) return $('mErr').textContent = 'Choose the new date.';
+      if (nd < todayStr()) return $('mErr').textContent = 'The new date cannot be in the past.';
+      if (nd === t.date) return $('mErr').textContent = 'Choose a different date from the current one.';
+      const expire = new Date(nd); expire.setDate(expire.getDate() + 400);
+      await updateDoc(doc(db, 'tasks', editingId), {
+        date: nd, accessIssue: false,
+        rescheduledFrom: t.date, rescheduledAt: serverTimestamp(), rescheduledByName: me.name,
+        rescheduleNote: $('mResNote').value.trim(),
+        expireAt: Timestamp.fromDate(expire)
+      });
+      showToast('📅 Job rescheduled to ' + nd);
     } else if (mode === 'edit') {
       const t = tasks.find(x => x.id === editingId);
       const title = $('mJob').value.trim();
@@ -818,6 +1097,7 @@ $('mSave').onclick = async () => {
         title, phone: $('mPhone').value.trim(), address, notes: $('mNotes').value.trim(),
         workDone: $('mWork').value.trim(),
         attendedBy: [...$('mChecks').querySelectorAll('input:checked')].map(i => i.value),
+        assignedTo: [...$('mAssign').querySelectorAll('input:checked')].map(i => i.value),
         status
       };
       const noAccess = $('mNoAccess').checked, accNote = $('mAccessNote').value.trim();
