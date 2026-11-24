@@ -717,8 +717,9 @@ $('calNext').onclick = () => shiftMonth(1);
    Every completed job that has no invoice yet, across all dates. Marking one as invoiced removes it from here. */
 function listenNonInv() {
   if (!isAdmin) return;
-  unsubNonInv = onSnapshot(query(collection(db, 'tasks'), where('status', '==', 'done'), where('invoiced', '==', false)), s => {
-    nonInv = rowsOf(s).sort((a, b) => (a.completedAt?.seconds ?? 9e12) - (b.completedAt?.seconds ?? 9e12));
+  // all completed jobs, filtered here: older jobs may have no 'invoiced' field at all, which a Firestore filter would miss
+  unsubNonInv = onSnapshot(query(collection(db, 'tasks'), where('status', '==', 'done')), s => {
+    nonInv = rowsOf(s).filter(t => t.invoiced !== true).sort((a, b) => (a.completedAt?.seconds ?? 9e12) - (b.completedAt?.seconds ?? 9e12));
     renderNonInv();
   }, e => { $('niList').innerHTML = `<div class="err">Could not load non invoiced jobs: ${esc(e.message)}</div>`; });
 }
