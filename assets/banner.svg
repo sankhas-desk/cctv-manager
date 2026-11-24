@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" width="900" height="240" role="img" aria-label="Pentech CCTV Service Manager - jobs, reports, invoices and vehicle mileage" xmlns:c2pa="http://c2pa.org/manifest">
-  <title>Pentech CCTV Service Manager v2.1</title>
+  <title>Pentech CCTV Service Manager v2.2</title>
   <defs>
     <linearGradient id="glow" x1="0" x2="1">
       <stop offset="0" stop-color="#e31e24" stop-opacity="0"/>
@@ -44,7 +44,7 @@
     <!-- version pill + live dot -->
     <g class="rise d3">
       <rect x="52" y="146" width="74" height="28" rx="14" fill="#e31e24"/>
-      <text x="89" y="165" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">v2.1</text>
+      <text x="89" y="165" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">v2.2</text>
       <circle class="live" cx="150" cy="160" r="5" fill="#1e9e57"/>
       <text x="162" y="165" font-size="13" fill="#a8abb0">live on GitHub Pages</text>
     </g>
